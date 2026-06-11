@@ -97,6 +97,59 @@ function selfIlluminate(obj, intensity = 0.6) {
   });
 }
 
+// ---------- floating name labels ----------
+// Canvas-rendered text on a sprite: always faces the camera, glow comes from
+// drawing the text twice with a wide then tight shadow blur.
+function makeLabelTexture(text) {
+  const fontSize = 80;
+  const pad = 48; // room for the glow to bleed
+  const font = `300 ${fontSize}px 'Segoe UI', system-ui, -apple-system, sans-serif`;
+  const canvas = document.createElement('canvas');
+  let ctx = canvas.getContext('2d');
+  ctx.font = font;
+  ctx.letterSpacing = '6px';
+  canvas.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  canvas.height = fontSize + pad * 2;
+  ctx = canvas.getContext('2d'); // resizing the canvas resets its state
+  ctx.font = font;
+  ctx.letterSpacing = '6px';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(170, 200, 255, 0.85)';
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  ctx.shadowBlur = 7;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+const labels = []; // { sprite, body, offset }
+
+function addLabel(body) {
+  // measure the body's own mesh, not Box3.setFromObject: that would include
+  // children (sun halo sprite, Saturn's rings) and inflate by the box diagonal
+  let radius = 1;
+  if (body.isMesh) {
+    if (!body.geometry.boundingSphere) body.geometry.computeBoundingSphere();
+    const s = body.getWorldScale(new THREE.Vector3());
+    radius = body.geometry.boundingSphere.radius * Math.max(s.x, s.y, s.z);
+  }
+  const tex = makeLabelTexture(body.name);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthWrite: false,
+  }));
+  const h = THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
+  sprite.scale.set(h * tex.image.width / tex.image.height, h, 1);
+  scene.add(sprite);
+  labels.push({ sprite, body, offset: radius + h * 0.75 });
+}
+
 // ---------- load the Blender-built GLTF ----------
 const orbitPivots = [];   // { pivot, speed }
 const spinners = [];      // { mesh, speed }
@@ -157,6 +210,11 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 
   for (const obj of clickable) {
     if (obj.name !== 'Sun') selfIlluminate(obj);
+  }
+
+  root.updateMatrixWorld(true); // labels measure bodies in world space
+  for (const obj of clickable) {
+    if (PLANET_DATA[obj.name]) addLabel(obj);
   }
 
   document.getElementById('loading').classList.add('hidden');
@@ -242,6 +300,11 @@ function animate() {
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
   if (moonPivot) moonPivot.rotation.y += 0.4 * dt;
+
+  for (const { sprite, body, offset } of labels) {
+    body.getWorldPosition(sprite.position);
+    sprite.position.y += offset;
+  }
 
   if (followTarget) {
     followTarget.getWorldPosition(targetPos);
