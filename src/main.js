@@ -154,11 +154,13 @@ function addLabel(body) {
 const orbitPivots = [];   // { pivot, speed }
 const spinners = [];      // { mesh, speed }
 const clickable = [];     // meshes that respond to clicks
-let moonPivot = null;
 
 new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   const root = gltf.scene;
   scene.add(root);
+
+  const moon = root.getObjectByName('Moon');
+  if (moon) moon.removeFromParent();
 
   const sun = root.getObjectByName('Sun');
   if (sun) {
@@ -192,16 +194,6 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
     spinners.push({ mesh: planet, speed: SPIN_BASE / orbit.day });
     clickable.push(planet);
 
-    if (name === 'Earth') {
-      const moon = root.getObjectByName('Moon');
-      if (moon) {
-        moonPivot = new THREE.Group();
-        moonPivot.position.copy(planet.position);
-        pivot.add(moonPivot);
-        moonPivot.attach(moon);
-        clickable.push(moon);
-      }
-    }
     if (name === 'Saturn') {
       const rings = root.getObjectByName('SaturnRings');
       if (rings) clickable.push(rings);
@@ -299,7 +291,6 @@ function animate() {
 
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
-  if (moonPivot) moonPivot.rotation.y += 0.4 * dt;
 
   for (const { sprite, body, offset } of labels) {
     body.getWorldPosition(sprite.position);
