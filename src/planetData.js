@@ -1,0 +1,141 @@
+// Real planetary data. Keys match the object names inside solar-system.gltf.
+export const PLANET_DATA = {
+  Sun: {
+    type: 'Yellow dwarf star (G2V)',
+    stats: {
+      'Diameter': '1,392,700 km',
+      'Mass': '1.989 × 10³⁰ kg',
+      'Surface temp.': '5,505 °C',
+      'Rotation period': '~25 Earth days',
+      'Age': '~4.6 billion years',
+    },
+    fact: 'The Sun contains 99.86% of all the mass in the solar system. About 1.3 million Earths could fit inside it.',
+  },
+  Mercury: {
+    type: 'Rocky planet',
+    stats: {
+      'Diameter': '4,879 km',
+      'Mass': '3.30 × 10²³ kg',
+      'Distance from Sun': '57.9 million km',
+      'Year length': '88 Earth days',
+      'Day length': '58.6 Earth days',
+      'Moons': '0',
+      'Temperature': '−173 °C to 427 °C',
+    },
+    fact: 'Mercury is the fastest planet, racing around the Sun at 47 km/s — but a single day there lasts almost two of its years.',
+  },
+  Venus: {
+    type: 'Rocky planet',
+    stats: {
+      'Diameter': '12,104 km',
+      'Mass': '4.87 × 10²⁴ kg',
+      'Distance from Sun': '108.2 million km',
+      'Year length': '225 Earth days',
+      'Day length': '243 Earth days (retrograde)',
+      'Moons': '0',
+      'Temperature': '464 °C (hottest planet)',
+    },
+    fact: 'Venus spins backwards and so slowly that its day is longer than its year. Its CO₂ atmosphere traps heat in a runaway greenhouse effect.',
+  },
+  Earth: {
+    type: 'Rocky planet — the only known world with life',
+    stats: {
+      'Diameter': '12,742 km',
+      'Mass': '5.97 × 10²⁴ kg',
+      'Distance from Sun': '149.6 million km (1 AU)',
+      'Year length': '365.25 days',
+      'Day length': '24 hours',
+      'Moons': '1',
+      'Average temp.': '15 °C',
+    },
+    fact: 'About 71% of Earth\'s surface is covered by liquid water — the only planet where it exists stably in all three states.',
+  },
+  Moon: {
+    type: 'Natural satellite of Earth',
+    stats: {
+      'Diameter': '3,474 km',
+      'Mass': '7.35 × 10²² kg',
+      'Distance from Earth': '384,400 km',
+      'Orbital period': '27.3 days',
+      'Temperature': '−173 °C to 127 °C',
+    },
+    fact: 'The Moon is slowly drifting away from Earth at about 3.8 cm per year — roughly the speed your fingernails grow.',
+  },
+  Mars: {
+    type: 'Rocky planet',
+    stats: {
+      'Diameter': '6,779 km',
+      'Mass': '6.42 × 10²³ kg',
+      'Distance from Sun': '227.9 million km',
+      'Year length': '687 Earth days',
+      'Day length': '24.6 hours',
+      'Moons': '2 (Phobos & Deimos)',
+      'Average temp.': '−63 °C',
+    },
+    fact: 'Mars hosts Olympus Mons, the largest volcano in the solar system — nearly 3× the height of Mount Everest.',
+  },
+  Jupiter: {
+    type: 'Gas giant',
+    stats: {
+      'Diameter': '139,820 km',
+      'Mass': '1.90 × 10²⁷ kg',
+      'Distance from Sun': '778.5 million km',
+      'Year length': '11.86 Earth years',
+      'Day length': '9.9 hours (fastest spin)',
+      'Moons': '95 confirmed',
+      'Average temp.': '−108 °C',
+    },
+    fact: 'The Great Red Spot is a storm larger than Earth that has been raging for at least 350 years.',
+  },
+  Saturn: {
+    type: 'Gas giant',
+    stats: {
+      'Diameter': '116,460 km',
+      'Mass': '5.68 × 10²⁶ kg',
+      'Distance from Sun': '1.43 billion km',
+      'Year length': '29.45 Earth years',
+      'Day length': '10.7 hours',
+      'Moons': '274 confirmed (most in the solar system)',
+      'Average temp.': '−139 °C',
+    },
+    fact: 'Saturn\'s rings are made of billions of ice and rock chunks, yet are only ~10 metres thick in places. The planet itself is less dense than water.',
+  },
+  Uranus: {
+    type: 'Ice giant',
+    stats: {
+      'Diameter': '50,724 km',
+      'Mass': '8.68 × 10²⁵ kg',
+      'Distance from Sun': '2.87 billion km',
+      'Year length': '84 Earth years',
+      'Day length': '17.2 hours (retrograde)',
+      'Moons': '28',
+      'Average temp.': '−195 °C',
+    },
+    fact: 'Uranus is tipped over 98° and rolls around the Sun on its side — each pole gets 42 years of sunlight, then 42 years of darkness.',
+  },
+  Neptune: {
+    type: 'Ice giant',
+    stats: {
+      'Diameter': '49,244 km',
+      'Mass': '1.02 × 10²⁶ kg',
+      'Distance from Sun': '4.50 billion km',
+      'Year length': '164.8 Earth years',
+      'Day length': '16.1 hours',
+      'Moons': '16',
+      'Average temp.': '−201 °C',
+    },
+    fact: 'Neptune has the fastest winds in the solar system — supersonic gusts over 2,000 km/h.',
+  },
+};
+
+// Orbital periods (Earth years) and axial day lengths (Earth days) for animation.
+export const ORBITS = {
+  Mercury: { period: 0.24, day: 58.6 },
+  Venus: { period: 0.62, day: -243 },
+  Earth: { period: 1.0, day: 1.0 },
+  Mars: { period: 1.88, day: 1.03 },
+  Jupiter: { period: 11.86, day: 0.41 },
+  Saturn: { period: 29.45, day: 0.45 },
+  Uranus: { period: 84.0, day: -0.72 },
+  Neptune: { period: 164.8, day: 0.67 },
+};
