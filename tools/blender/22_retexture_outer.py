@@ -3,18 +3,18 @@ import sshelp as H
 
 def jupiter(nt):
     bands = H.band_color(nt, [
-        (0.00, '#D9A05B'),
-        (0.10, '#A85F2E'),
-        (0.18, '#F5E7C8'),
-        (0.26, '#C75B22'),
-        (0.34, '#FFF2D9'),
-        (0.43, '#D6A65A'),
-        (0.50, '#EEDDB5'),
-        (0.58, '#9C5A28'),
-        (0.66, '#F3E5C0'),
-        (0.76, '#CE9244'),
-        (0.87, '#E8CF9E'),
-        (1.00, '#C99A52'),
+        (0.00, '#DE8C30'),
+        (0.10, '#8A4412'),
+        (0.18, '#F4CE8E'),
+        (0.26, '#C2490C'),
+        (0.34, '#F8DCA0'),
+        (0.43, '#E08A2A'),
+        (0.50, '#EFC476'),
+        (0.58, '#76390E'),
+        (0.66, '#F2C780'),
+        (0.76, '#CB741A'),
+        (0.87, '#E2AC54'),
+        (1.00, '#B96E1E'),
     ], noise_scale=6.0, distort=0.05, detail=9.0)
     tc = H.tex_coord(nt)
     vm = nt.nodes.new('ShaderNodeVectorMath')
@@ -32,39 +32,39 @@ def jupiter(nt):
     mr.inputs['To Min'].default_value = 1.0
     mr.inputs['To Max'].default_value = 0.0
     nt.links.new(vd.outputs['Value'], mr.inputs['Value'])
-    return H.mix_color(nt, mr.outputs['Result'], bands, '#D43D1A')
+    return H.mix_color(nt, mr.outputs['Result'], bands, '#E03210')
 
 
 def saturn(nt):
     return H.band_color(nt, [
-        (0.00, '#C9A35C'),
-        (0.14, '#E0BC72'),
-        (0.28, '#F5DCA0'),
-        (0.42, '#E6C684'),
-        (0.55, '#FAE7B4'),
-        (0.70, '#D9B069'),
-        (0.85, '#F0D699'),
-        (1.00, '#CBA260'),
+        (0.00, '#C08A30'),
+        (0.14, '#D8A748'),
+        (0.28, '#F0C868'),
+        (0.42, '#E2B14E'),
+        (0.55, '#F8D87E'),
+        (0.70, '#D0973A'),
+        (0.85, '#ECC05C'),
+        (1.00, '#C28C32'),
     ], noise_scale=5.0, distort=0.035, detail=7.0)
 
 
 def uranus(nt):
     return H.band_color(nt, [
-        (0.00, '#2FA8B8'),
-        (0.35, '#4CC4D0'),
-        (0.65, '#72DCE4'),
-        (1.00, '#9FF0F4'),
+        (0.00, '#18C0D8'),
+        (0.35, '#3EDCEC'),
+        (0.65, '#6CEEF6'),
+        (1.00, '#A4FAFF'),
     ], noise_scale=3.5, distort=0.025, detail=5.0)
 
 
 def neptune(nt):
     return H.band_color(nt, [
-        (0.00, '#0F2DA8'),
-        (0.28, '#1A47DE'),
-        (0.46, '#2E63F0'),
-        (0.60, '#1336BC'),
-        (0.78, '#4D82F5'),
-        (1.00, '#6FA0FF'),
+        (0.00, '#081A78'),
+        (0.28, '#0E2EAE'),
+        (0.46, '#1A44D2'),
+        (0.60, '#0A2188'),
+        (0.78, '#2C56DC'),
+        (1.00, '#4472EA'),
     ], noise_scale=4.5, distort=0.06, detail=8.0)
 
 
