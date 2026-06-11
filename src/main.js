@@ -143,7 +143,9 @@ function addLabel(body) {
     map: tex,
     transparent: true,
     depthWrite: false,
+    depthTest: false, // never occluded: labels stay visible at any zoom
   }));
+  sprite.renderOrder = 999; // draw after the scene so depthTest:false can't be overdrawn
   const h = THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
   sprite.scale.set(h * tex.image.width / tex.image.height, h, 1);
   scene.add(sprite);
