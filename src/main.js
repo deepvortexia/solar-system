@@ -7,10 +7,15 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PLANET_DATA, ORBITS } from './planetData.js';
 import './style.css';
 
+// ---------- device profile ----------
+const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+const isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 700;
+
 // ---------- renderer / scene / camera ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// lower pixel-ratio cap on phones: full DPR + ACES tonemapping cooks low-end GPUs
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isSmallScreen ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
@@ -20,13 +25,21 @@ scene.background = new THREE.Color(0x02030a);
 
 const camera = new THREE.PerspectiveCamera(
   50, window.innerWidth / window.innerHeight, 0.1, 2000);
-camera.position.set(55, 30, 90);
+// portrait screens need a wider pull-back so the horizontally-spread system fits
+const fit = THREE.MathUtils.clamp(window.innerHeight / window.innerWidth, 1, 1.9);
+camera.position.set(55, 30, 90).multiplyScalar(fit);
+const HOME_POS = camera.position.clone();
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.minDistance = 2;
-controls.maxDistance = 450;
+controls.maxDistance = isSmallScreen ? 300 : 450;
+if (isCoarsePointer) {
+  controls.enablePan = false; // two-finger pan strands touch users in empty space
+  document.getElementById('hint').textContent =
+    'Drag to orbit · Pinch to zoom · Tap a planet';
+}
 
 // ---------- lights ----------
 const sunLight = new THREE.PointLight(0xfff1dc, 2.6, 0, 0); // decay 0: even lighting across the system
@@ -35,7 +48,7 @@ scene.add(new THREE.AmbientLight(0x223344, 0.5));
 
 // ---------- starfield ----------
 {
-  const count = 3000;
+  const count = isSmallScreen ? 1800 : 3000;
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const r = 350 + Math.random() * 250;
@@ -146,7 +159,9 @@ function addLabel(body) {
     depthTest: false, // never occluded: labels stay visible at any zoom
   }));
   sprite.renderOrder = 999; // draw after the scene so depthTest:false can't be overdrawn
-  const h = THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
+  const h = isSmallScreen
+    ? THREE.MathUtils.clamp(radius * 0.8, 1.6, 3.2) // legible on a 6" screen
+    : THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
   sprite.scale.set(h * tex.image.width / tex.image.height, h, 1);
   scene.add(sprite);
   labels.push({ sprite, body, offset: radius + h * 0.75 });
@@ -196,6 +211,12 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
     spinners.push({ mesh: planet, speed: SPIN_BASE / orbit.day });
     clickable.push(planet);
 
+    // visible-scale boost: the rocky planets are only a few px wide on phones,
+    // making them invisible and untappable at the default zoom
+    if (isSmallScreen && ['Mercury', 'Venus', 'Earth', 'Mars'].includes(name)) {
+      planet.scale.multiplyScalar(1.5);
+    }
+
     if (name === 'Saturn') {
       const rings = root.getObjectByName('SaturnRings');
       if (rings) clickable.push(rings);
@@ -223,16 +244,37 @@ const tooltip = document.getElementById('tooltip');
 const panel = document.getElementById('info-panel');
 let followTarget = null;
 
+const screenPos = new THREE.Vector3();
+
 function pick(event) {
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(clickable, true);
-  if (!hits.length) return null;
-  let obj = hits[0].object;
-  while (obj && !PLANET_DATA[obj.name] && obj.name !== 'SaturnRings') obj = obj.parent;
-  if (obj && obj.name === 'SaturnRings') obj = obj.parent; // rings count as Saturn
-  return obj && PLANET_DATA[obj.name] ? obj : null;
+  // labels are tap targets too: they're bigger than the small planets
+  const sprites = labels.map((l) => l.sprite);
+  const hits = raycaster.intersectObjects([...clickable, ...sprites], true);
+  if (hits.length) {
+    let obj = hits[0].object;
+    const label = labels.find((l) => l.sprite === obj);
+    if (label) return label.body;
+    while (obj && !PLANET_DATA[obj.name] && obj.name !== 'SaturnRings') obj = obj.parent;
+    if (obj && obj.name === 'SaturnRings') obj = obj.parent; // rings count as Saturn
+    if (obj && PLANET_DATA[obj.name]) return obj;
+  }
+  // near-miss fallback: snap to the closest body within a finger-sized radius
+  const maxPx = event.pointerType === 'touch' ? 36 : 18;
+  let best = null;
+  let bestD = maxPx;
+  for (const obj of clickable) {
+    if (!PLANET_DATA[obj.name]) continue;
+    obj.getWorldPosition(screenPos).project(camera);
+    if (screenPos.z > 1) continue; // behind the camera
+    const sx = (screenPos.x + 1) / 2 * window.innerWidth;
+    const sy = (1 - screenPos.y) / 2 * window.innerHeight;
+    const d = Math.hypot(sx - event.clientX, sy - event.clientY);
+    if (d < bestD) { bestD = d; best = obj; }
+  }
+  return best;
 }
 
 function showInfo(name) {
@@ -246,15 +288,26 @@ function showInfo(name) {
   panel.classList.add('open');
 }
 
+let resetting = false;
+
+function resetView() {
+  followTarget = null;
+  panel.classList.remove('open');
+  resetting = true; // animated in the render loop
+}
+
 let downAt = null;
+let lastEmptyTap = { t: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener('pointerdown', (e) => {
   downAt = { x: e.clientX, y: e.clientY };
+  resetting = false; // user grabbed the view mid-reset
 });
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!downAt) return;
   const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
   downAt = null;
-  if (moved > 6) return; // it was a drag, not a click
+  // fingers wobble: a touch "tap" drifts far more px than a mouse click
+  if (moved > (e.pointerType === 'touch' ? 14 : 6)) return;
   const obj = pick(e);
   if (obj) {
     followTarget = obj;
@@ -262,10 +315,18 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   } else {
     panel.classList.remove('open');
     followTarget = null;
+    // double-tap on empty space resets the view
+    const now = performance.now();
+    if (now - lastEmptyTap.t < 350 &&
+        Math.hypot(e.clientX - lastEmptyTap.x, e.clientY - lastEmptyTap.y) < 40) {
+      resetView();
+    }
+    lastEmptyTap = { t: now, x: e.clientX, y: e.clientY };
   }
 });
 
 renderer.domElement.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch') return; // no hover on touch; labels cover it
   const obj = pick(e);
   renderer.domElement.style.cursor = obj ? 'pointer' : 'grab';
   if (obj) {
@@ -283,9 +344,29 @@ document.getElementById('close-panel').addEventListener('click', () => {
   followTarget = null;
 });
 
+document.getElementById('reset-view').addEventListener('click', resetView);
+
+// swipe down dismisses the bottom-sheet info panel on phones
+let sheetTouch = null;
+panel.addEventListener('touchstart', (e) => {
+  sheetTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+panel.addEventListener('touchend', (e) => {
+  if (!sheetTouch) return;
+  const dy = e.changedTouches[0].clientY - sheetTouch.y;
+  const dx = Math.abs(e.changedTouches[0].clientX - sheetTouch.x);
+  sheetTouch = null;
+  if (!window.matchMedia('(max-width: 600px)').matches) return; // sheet layout only
+  if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
+    panel.classList.remove('open');
+    followTarget = null;
+  }
+}, { passive: true });
+
 // ---------- animation ----------
 const clock = new THREE.Clock();
 const targetPos = new THREE.Vector3();
+const ORIGIN = new THREE.Vector3();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -297,6 +378,19 @@ function animate() {
   for (const { sprite, body, offset } of labels) {
     body.getWorldPosition(sprite.position);
     sprite.position.y += offset;
+    // fade distant labels so small screens aren't wallpapered in text
+    const d = sprite.position.distanceTo(camera.position);
+    sprite.material.opacity = THREE.MathUtils.clamp(1.25 - d / 400, 0.35, 1);
+  }
+
+  if (resetting) {
+    camera.position.lerp(HOME_POS, 0.08);
+    controls.target.lerp(ORIGIN, 0.08);
+    if (camera.position.distanceTo(HOME_POS) < 0.4) {
+      camera.position.copy(HOME_POS);
+      controls.target.copy(ORIGIN);
+      resetting = false;
+    }
   }
 
   if (followTarget) {
