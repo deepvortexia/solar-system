@@ -307,6 +307,7 @@ const flightFrom = new THREE.Vector3();
 const _planetWorld = new THREE.Vector3();
 const _mascotDest = new THREE.Vector3();
 const _lightDir = new THREE.Vector3(); // mascot -> camera, for the follow light
+const _flyDir = new THREE.Vector3();   // mascot -> destination, for flight heading
 const _ringColor = new THREE.Color();  // scratch for the gold<->white ring cycle
 const _white = new THREE.Color(0xffffff);
 
@@ -634,8 +635,9 @@ function animate() {
   if (mascot) {
     const t = clock.elapsedTime;
     const dest = mascotDestination(t); // live target: orbit point or home, with bob
+    const fe = t - flightStart;        // seconds elapsed into the current flight
+    const p = THREE.MathUtils.clamp(fe / FLIGHT_TIME, 0, 1); // flight progress 0..1
     if (mascotFlying) {
-      const p = THREE.MathUtils.clamp((t - flightStart) / FLIGHT_TIME, 0, 1);
       const ease = p * p * (3 - 2 * p);        // smoothstep ease in/out
       mascot.position.lerpVectors(flightFrom, dest, ease);
       if (p >= 1) mascotFlying = false;        // arrived: hand off to steady orbit/bob
@@ -648,18 +650,35 @@ function animate() {
     _lightDir.subVectors(camera.position, mascot.position).normalize().multiplyScalar(6);
     mascotLight.position.add(_lightDir);
 
-    // face the camera on the Y axis only (lookAt would tilt the body): point the
-    // mascot's +Z at the camera via the XZ-plane bearing. A small forward lean
-    // while in transit reads as "boosting".
-    mascot.rotation.y = Math.atan2(camera.position.x - mascot.position.x,
-                                   camera.position.z - mascot.position.z);
-    mascot.rotation.z = 0;
-    mascot.rotation.x = mascotFlying ? -0.2 : 0;
+    if (mascotFlying) {
+      // Superman style: aim where we're going, then pitch flat (head leading).
+      _flyDir.subVectors(dest, mascot.position);
+      if (_flyDir.x * _flyDir.x + _flyDir.z * _flyDir.z > 1e-4) {
+        mascot.rotation.y = Math.atan2(_flyDir.x, _flyDir.z); // face the destination
+      }
+      mascot.rotation.z = 0;
+      // pitch toward horizontal over the first 0.3s, hold, then straighten in the
+      // last 0.3s (p > 0.85) for an upright landing
+      if (p > 0.85) {
+        mascot.rotation.x = THREE.MathUtils.lerp(-1.4, 0, (p - 0.85) / 0.15);
+      } else if (fe < 0.3) {
+        mascot.rotation.x = THREE.MathUtils.lerp(0, -1.4, fe / 0.3);
+      } else {
+        mascot.rotation.x = -1.4; // cruising flat
+      }
+    } else {
+      // not flying: face the camera on the Y axis only, fully upright
+      mascot.rotation.y = Math.atan2(camera.position.x - mascot.position.x,
+                                     camera.position.z - mascot.position.z);
+      mascot.rotation.z = 0;
+      mascot.rotation.x = 0;
+    }
 
-    // flicker the thruster flames; flick much faster while boosting to the target
-    const flameSpeed = mascotFlying ? 60 : 25;
+    // flames: while boosting to a planet, double the length and flicker far faster
+    const flameSpeed = mascotFlying ? 120 : 25;
+    const flameBoost = mascotFlying ? 2 : 1;
     for (const { mesh, baseScaleY } of flames) {
-      mesh.scale.y = baseScaleY * (1 + Math.sin(t * flameSpeed) * 0.25);
+      mesh.scale.y = baseScaleY * flameBoost * (1 + Math.sin(t * flameSpeed) * 0.25);
     }
 
     // eyes blink independently: each closes to 0.05 over 0.08s then reopens, then
