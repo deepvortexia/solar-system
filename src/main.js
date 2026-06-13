@@ -241,16 +241,20 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
 const flames = [];          // thruster-flame meshes, flickered in the render loop
-const eyes = [];            // { mesh, baseY, offset } — blinked in the render loop
-const arms = [];            // { mesh, baseZ, phase } — idle-waved in the render loop
-const ringSpins = [];       // ring/halo meshes spun on Y in the render loop
+const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
+const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
+const ringSpins = [];       // [{ mesh }] — cyan glow pulse + continuous Y self-spin
+let mouth = null;           // { mesh, base*, target, nextExpr } — morphs between faces
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
 const MASCOT_HOME = new THREE.Vector3(0, MASCOT_Y, 0);
 
-// blink scheduling: one blink fires the eyes ~every 3-4s, each eye offset slightly
-let eyeBlinkStart = -10;    // clock time the current blink began (far past = idle)
-let eyeNextBlink = 2;       // clock time the next blink should fire
+// the faces the mouth cycles between (scale/rotation relative to its rest pose)
+const MOUTH_SHAPES = [
+  { sx: 1.0, sy: 1.0, rz: 0.0 },   // normal smile
+  { sx: 0.4, sy: 1.5, rz: 0.0 },   // surprised "O"
+  { sx: 1.0, sy: 1.0, rz: 0.3 },   // sad curve
+];
 
 // flight state: the mascot flies to a clicked planet, orbits it, then flies home
 let mascotTarget = null;    // planet to orbit, or null to return home
@@ -291,16 +295,33 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
     if (c.isMesh && c.name.includes('Flame')) {
       flames.push({ mesh: c, baseScaleY: c.scale.y });
     }
-    // stagger each eye by 0.1s so the two eyes never shut in perfect unison
+    // each eye keeps its own randomized blink clock so the two blink independently
     if (c.isMesh && c.name.includes('Eye')) {
-      eyes.push({ mesh: c, baseY: c.scale.y, offset: eyes.length * 0.1 });
+      eyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, nextBlink: 1 + Math.random() * 4 });
     }
-    // alternate arm phases (π apart) so a left/right pair waves out of step
+    // each arm gets a random phase plus its own timer for the occasional big wave
     if (c.isMesh && c.name.includes('Arm')) {
-      arms.push({ mesh: c, baseZ: c.rotation.z, phase: arms.length * Math.PI });
+      arms.push({
+        mesh: c, baseZ: c.rotation.z,
+        phase: Math.random() * Math.PI * 2,
+        bigStart: -10, nextBig: 3 + Math.random() * 4,
+      });
     }
+    // ring / halo: give it a cyan emissive glow we can pulse, then spin it on Y
     if (c.isMesh && (c.name.includes('Ring') || c.name.includes('Halo'))) {
-      ringSpins.push(c);
+      if (c.material && 'emissive' in c.material) {
+        c.material.emissive = new THREE.Color(0x00ffff);
+        c.material.emissiveIntensity = 1;
+        c.material.needsUpdate = true;
+      }
+      ringSpins.push({ mesh: c });
+    }
+    // mouth/smile: store its rest pose so expressions can morph relative to it
+    if (c.isMesh && !mouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
+      mouth = {
+        mesh: c, baseX: c.scale.x, baseY: c.scale.y, baseZ: c.rotation.z,
+        target: MOUTH_SHAPES[0], nextExpr: 4 + Math.random() * 4,
+      };
     }
   });
 
@@ -511,31 +532,58 @@ function animate() {
     } else {
       mascot.position.copy(dest);
     }
-    mascot.rotation.y = Math.sin(t * 0.4) * 0.4; // slow sway, keeps the face toward you
+    // body idle: a slow Y-rotation oscillation, like a gentle breathing sway
+    mascot.rotation.y = Math.sin(t * 0.5) * 0.15;
+
     // flicker the thruster flames; flick much faster while boosting to the target
     const flameSpeed = mascotFlying ? 60 : 25;
     for (const { mesh, baseScaleY } of flames) {
       mesh.scale.y = baseScaleY * (1 + Math.sin(t * flameSpeed) * 0.25);
     }
 
-    // eyes blink: schedule the next blink 3-4s out, then squash each eye's Y to
-    // 0.1 for 0.1s — the per-eye offset keeps the two eyes from blinking in sync
-    if (t >= eyeNextBlink) {
-      eyeBlinkStart = t;
-      eyeNextBlink = t + 3 + Math.random(); // next blink in 3-4 seconds
-    }
-    for (const { mesh, baseY, offset } of eyes) {
-      const bt = t - eyeBlinkStart - offset;
-      mesh.scale.y = (bt >= 0 && bt < 0.1) ? baseY * 0.1 : baseY;
-    }
-
-    // arms wave: gentle idle sway on the Z axis, each arm phase-shifted
-    for (const { mesh, baseZ, phase } of arms) {
-      mesh.rotation.z = baseZ + Math.sin(t * 1.5 + phase) * 0.3;
+    // eyes blink independently: each closes to 0.05 over 0.08s then reopens, then
+    // reschedules itself 2-6s out so the two eyes drift out of sync naturally
+    for (const eye of eyes) {
+      if (t >= eye.nextBlink) {
+        eye.blinkStart = t;
+        eye.nextBlink = t + 2 + Math.random() * 4; // 2-6s
+      }
+      const bt = t - eye.blinkStart;
+      let k = 1;
+      if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);     // closing
+      else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);  // opening
+      eye.mesh.scale.y = eye.baseY * k;
     }
 
-    // ring / halo spins continuously on its own Y axis
-    for (const mesh of ringSpins) mesh.rotation.y += 0.8 * dt;
+    // arms: a gentle idle sin wave, with an occasional big wave (3x amplitude,
+    // smoothly enveloped over 0.5s) every 3-7s
+    for (const arm of arms) {
+      if (t >= arm.nextBig) {
+        arm.bigStart = t;
+        arm.nextBig = t + 3 + Math.random() * 4; // 3-7s
+      }
+      let amp = 0.3;
+      const bw = t - arm.bigStart;
+      if (bw >= 0 && bw < 0.5) amp += Math.sin((bw / 0.5) * Math.PI) * 0.6; // peak 0.9 (3x)
+      arm.mesh.rotation.z = arm.baseZ + Math.sin(t * 1.5 + arm.phase) * amp;
+    }
+
+    // ring / halo: continuous self-spin plus a cyan glow pulsing 0.5 -> 1.5
+    for (const { mesh } of ringSpins) {
+      mesh.rotation.y += 0.8 * dt;
+      if (mesh.material) mesh.material.emissiveIntensity = 1 + Math.sin(t * 2) * 0.5;
+    }
+
+    // mouth: every 4-8s pick a new expression and smoothly morph toward it
+    if (mouth) {
+      if (t >= mouth.nextExpr) {
+        mouth.target = MOUTH_SHAPES[Math.floor(Math.random() * MOUTH_SHAPES.length)];
+        mouth.nextExpr = t + 4 + Math.random() * 4; // 4-8s
+      }
+      mouth.mesh.scale.x = THREE.MathUtils.lerp(mouth.mesh.scale.x, mouth.baseX * mouth.target.sx, 0.1);
+      mouth.mesh.scale.y = THREE.MathUtils.lerp(mouth.mesh.scale.y, mouth.baseY * mouth.target.sy, 0.1);
+      mouth.mesh.rotation.z = THREE.MathUtils.lerp(mouth.mesh.rotation.z, mouth.baseZ + mouth.target.rz, 0.1);
+    }
   }
 
   for (const { sprite, body, offset } of labels) {
