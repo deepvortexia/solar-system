@@ -22,12 +22,17 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x02030a);
+// atmospheric fog: outer planets fade into the void for a sense of vast depth.
+// Matches the background so it blends; the star shader ignores fog, so the
+// starfield stays crisp as a distant backdrop behind the receding planets.
+scene.fog = new THREE.Fog(0x02030a, 90, 520);
 
 const camera = new THREE.PerspectiveCamera(
-  50, window.innerWidth / window.innerHeight, 0.1, 2000);
+  38, window.innerWidth / window.innerHeight, 0.1, 2000); // narrow FOV = telephoto depth
 // portrait screens need a wider pull-back so the horizontally-spread system fits
 const fit = THREE.MathUtils.clamp(window.innerHeight / window.innerWidth, 1, 1.9);
-camera.position.set(55, 30, 90).multiplyScalar(fit);
+// closer + lower angle: look across the system (not down at it) so it reads vast, not flat
+camera.position.set(30, 16, 46).multiplyScalar(fit);
 const HOME_POS = camera.position.clone();
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -201,6 +206,7 @@ function addLabel(body, text = body.name, offsetOverride = null, scaleMult = 1) 
     transparent: true,
     depthWrite: false,
     depthTest: false, // never occluded: labels stay visible at any zoom / distance
+    fog: false,       // stay crisp as wayfinding/tap targets even when the planet fogs out
   }));
   sprite.renderOrder = 999; // draw after the scene so depthTest:false can't be overdrawn
   const base = isSmallScreen
@@ -234,6 +240,7 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
       blending: THREE.AdditiveBlending,
       transparent: true,
       depthWrite: false,
+      fog: false, // additive + fog muddies the glow; keep the Sun's halo crisp
     }));
     halo.scale.set(32, 32, 1);
     sun.add(halo);
@@ -408,7 +415,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   // to the pivot so it travels with her; intensity + scale breathe in the loop.
   const haloMesh = new THREE.Mesh(
     new THREE.RingGeometry(1.2, 1.6, 64),
-    new THREE.MeshStandardMaterial({ color: 0x00cfff, emissive: 0x00cfff, emissiveIntensity: 1.5, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+    new THREE.MeshStandardMaterial({ color: 0x00cfff, emissive: 0x00cfff, emissiveIntensity: 1.5, side: THREE.DoubleSide, transparent: true, opacity: 0.9, fog: false })
   );
   haloMesh.rotation.x = Math.PI / 2;
   haloMesh.position.y = MASCOT_HEIGHT / 2 + 0.5; // just above the head, not floating high
@@ -423,7 +430,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
       haloMesh.geometry, // same radius/shape as the halo
       new THREE.MeshBasicMaterial({
         color: 0x00cfff, transparent: true, opacity: 0,
-        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, fog: false,
       }),
     );
     wave.rotation.x = Math.PI / 2;          // horizontal, matching the halo
