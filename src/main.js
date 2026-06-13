@@ -299,6 +299,8 @@ const flames = [];          // thruster-flame meshes, flickered in the render lo
 const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
 const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
 let halo = null;            // thin energy ring above Terra's head — pulses/breathes
+const haloWaves = [];       // [{ mesh, phase }] — ripples emanating from the halo in flight
+const HALO_WAVE_CYCLE = 1.2; // seconds for a wave to expand + fade out
 let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
@@ -411,6 +413,24 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   haloMesh.position.y = MASCOT_HEIGHT / 2 + 0.5; // just above the head, not floating high
   pivot.add(haloMesh);
   halo = haloMesh;
+
+  // energy waves: ripples that expand + fade out of the halo while Terra flies.
+  // Three rings sharing the halo's geometry, staggered evenly across the cycle so
+  // they pulse outward continuously. Additive cyan for a glowing-energy look.
+  for (let i = 0; i < 3; i++) {
+    const wave = new THREE.Mesh(
+      haloMesh.geometry, // same radius/shape as the halo
+      new THREE.MeshBasicMaterial({
+        color: 0x00cfff, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    wave.rotation.x = Math.PI / 2;          // horizontal, matching the halo
+    wave.position.y = haloMesh.position.y;   // emanate from the halo's height
+    wave.visible = false;                    // only shown during flight
+    pivot.add(wave);
+    haloWaves.push({ mesh: wave, phase: (i / 3) * HALO_WAVE_CYCLE }); // 0, 0.4, 0.8s
+  }
 
   // floating name label, same sprite/canvas system as the planets. The model is
   // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
@@ -744,6 +764,17 @@ function animate() {
       halo.material.emissiveIntensity = 0.8 + 0.85 * (0.5 + 0.5 * Math.sin(hp * 1.8));
       const hs = 0.95 + 0.05 * Math.sin(hp * 1.2);
       halo.scale.set(hs, hs, hs);
+    }
+
+    // energy waves: only ripple outward while flying. Each ring cycles through
+    // expand (scale 1->2.75) + fade (opacity 0.6->0) on its staggered phase.
+    for (const wave of haloWaves) {
+      if (!mascotFlying) { wave.mesh.visible = false; continue; }
+      wave.mesh.visible = true;
+      const k = ((t + wave.phase) % HALO_WAVE_CYCLE) / HALO_WAVE_CYCLE; // 0..1
+      const ws = 1.0 + 1.75 * k;            // grow outward
+      wave.mesh.scale.set(ws, ws, ws);
+      wave.mesh.material.opacity = 0.6 * (1 - k); // fade as it expands
     }
 
     // mouth: every 4-8s pick a new expression and smoothly rotate toward it.
