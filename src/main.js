@@ -548,6 +548,29 @@ function resetView() {
   resetting = true; // animated in the render loop
 }
 
+// On phones the info panel is a bottom sheet (see the max-width:600px CSS) that
+// overlaps Terra. There we hide her while the sheet is open and defer her flight
+// until it closes; desktop (side panel) keeps the original behaviour untouched.
+const isSheetLayout = () => window.matchMedia('(max-width: 600px)').matches;
+let pendingFlyTarget = null; // planet to fly to once the sheet closes (mobile)
+
+function setTerraVisible(visible) {
+  if (mascot) mascot.visible = visible;           // model + orbiting particles
+  if (mascotLight) mascotLight.visible = visible; // her follow light
+  const lbl = labels.find((l) => l.body === mascot);
+  if (lbl) lbl.sprite.visible = visible;          // the "Terra" name label
+}
+
+// mobile: the sheet just closed — reveal Terra and send her to the deferred planet.
+// Returns true if it consumed a pending flight, so callers can skip their default.
+function revealTerraAndFly() {
+  if (!pendingFlyTarget) return false;
+  setTerraVisible(true);
+  flyMascotTo(pendingFlyTarget);
+  pendingFlyTarget = null;
+  return true;
+}
+
 let downAt = null;
 let lastEmptyTap = { t: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener('pointerdown', (e) => {
@@ -564,11 +587,18 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (obj) {
     followTarget = obj;
     showInfo(obj.name);
-    flyMascotTo(obj);
+    if (isSheetLayout()) {
+      pendingFlyTarget = obj;  // mobile: defer the flight until the sheet closes
+      setTerraVisible(false);  // hide Terra so she doesn't overlap the bottom sheet
+    } else {
+      flyMascotTo(obj);        // desktop: fly immediately (unchanged)
+    }
   } else {
     panel.classList.remove('open');
     followTarget = null;
-    flyMascotHome();
+    // mobile: a pending selection reveals Terra and flies her there; otherwise
+    // (desktop, or nothing pending) send her home as before
+    if (!revealTerraAndFly()) flyMascotHome();
     // double-tap on empty space resets the view
     const now = performance.now();
     if (now - lastEmptyTap.t < 350 &&
@@ -596,8 +626,9 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 document.getElementById('close-panel').addEventListener('click', () => {
   panel.classList.remove('open');
   followTarget = null;
-  // intentionally no flyMascotHome(): the mascot keeps orbiting the selected
-  // planet after the panel is dismissed; only empty-space taps / reset send it home
+  // mobile: reveal Terra and fly her to the planet selected while the sheet was up.
+  // desktop: no pending target, so this is a no-op and the mascot keeps orbiting.
+  revealTerraAndFly();
 });
 
 document.getElementById('reset-view').addEventListener('click', resetView);
@@ -616,7 +647,7 @@ panel.addEventListener('touchend', (e) => {
   if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
     panel.classList.remove('open');
     followTarget = null;
-    // swipe-down only dismisses the panel; the mascot stays orbiting the planet
+    revealTerraAndFly(); // reveal Terra and fly her to the selected planet
   }
 }, { passive: true });
 
@@ -632,7 +663,7 @@ function animate() {
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
 
-  if (mascot) {
+  if (mascot && mascot.visible) { // visible=false (mobile, sheet open) pauses her
     const t = clock.elapsedTime;
     const dest = mascotDestination(t); // live target: orbit point or home, with bob
     const fe = t - flightStart;        // seconds elapsed into the current flight
