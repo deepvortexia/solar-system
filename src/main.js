@@ -240,6 +240,7 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 // ---------- mascot ----------
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
+const flames = [];          // thruster-flame meshes, flickered in the render loop
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
 
@@ -255,8 +256,25 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   model.scale.setScalar(s);
   model.position.set(-center.x * s, -center.y * s, -center.z * s);
 
+  // the Sun's point light decays toward the orbital plane and the mascot floats
+  // well above it, so give it its own light so it reads clearly against space
+  const mascotLight = new THREE.PointLight(0xffffff, 3, 0, 0);
+  mascotLight.position.set(0, MASCOT_Y, 6);
+  scene.add(mascotLight);
+
   // emissive flames/halo/buttons already carry emission from the glTF; make sure
-  // they aren't dimmed and that nothing writes itself into the click targets
+  // they aren't dimmed, and record the flame meshes so they can flicker
+  model.traverse((c) => {
+    if (c.isMesh && c.material && c.material.emissive &&
+        !c.material.emissive.equals(new THREE.Color(0x000000))) {
+      c.material.emissiveIntensity = 1;
+      c.material.needsUpdate = true;
+    }
+    if (c.isMesh && c.name.includes('Flame')) {
+      flames.push({ mesh: c, baseScaleY: c.scale.y });
+    }
+  });
+
   const pivot = new THREE.Group();
   pivot.add(model);
   pivot.position.set(0, MASCOT_Y, 0);
@@ -408,6 +426,10 @@ function animate() {
     const t = clock.elapsedTime;
     mascot.position.y = MASCOT_Y + Math.sin(t * 1.1) * 0.6; // gentle bob
     mascot.rotation.y = Math.sin(t * 0.4) * 0.4;            // sway, keeps the face toward you
+    // flicker the thruster flames: a fast sine wobbles each flame's length
+    for (const { mesh, baseScaleY } of flames) {
+      mesh.scale.y = baseScaleY * (1 + Math.sin(t * 25) * 0.25);
+    }
   }
 
   for (const { sprite, body, offset } of labels) {
