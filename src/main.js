@@ -250,6 +250,7 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 // ---------- mascot ----------
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
+let mascotLight = null;     // point light that follows the mascot (set on load)
 const flames = [];          // thruster-flame meshes, flickered in the render loop
 const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
 const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
@@ -287,8 +288,8 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   model.position.set(-center.x * s, -center.y * s, -center.z * s);
 
   // the Sun's point light decays toward the orbital plane and the mascot floats
-  // well above it, so give it its own light so it reads clearly against space
-  const mascotLight = new THREE.PointLight(0xffffff, 3, 0, 0);
+  // well above it, so give it its own light; it follows the mascot every frame
+  mascotLight = new THREE.PointLight(0xffffff, 3, 0, 0);
   mascotLight.position.set(0, MASCOT_Y, 6);
   scene.add(mascotLight);
 
@@ -387,9 +388,11 @@ function mascotDestination(t) {
   if (mascotTarget) {
     mascotTarget.getWorldPosition(_planetWorld);
     const a = t * 0.8; // angular speed of the mascot's orbit around the planet
+    // X/Z trace the circle; Y wobbles at a *different* frequency (a * 0.5) to tilt
+    // the orbit into a 3D figure-8 ellipse, plus an energetic 1.2-amplitude bob
     _mascotDest.set(
       _planetWorld.x + Math.cos(a) * mascotOrbitRadius,
-      _planetWorld.y + Math.sin(t * 1.1) * 0.6,
+      _planetWorld.y + Math.sin(a * 0.5) * mascotOrbitRadius * 0.4 + Math.sin(t * 1.6) * 1.2,
       _planetWorld.z + Math.sin(a) * mascotOrbitRadius,
     );
   } else {
@@ -553,8 +556,14 @@ function animate() {
     } else {
       mascot.position.copy(dest);
     }
-    // body idle: a slow Y-rotation oscillation, like a gentle breathing sway
-    mascot.rotation.y = Math.sin(t * 0.5) * 0.15;
+    // the point light rides just in front of the mascot wherever it travels
+    mascotLight.position.set(mascot.position.x, mascot.position.y, mascot.position.z + 6);
+
+    // always face the camera, but on the Y axis only so the body never tilts;
+    // add a slight forward lean while in transit so it reads as "boosting"
+    mascot.lookAt(camera.position);
+    mascot.rotation.z = 0;
+    mascot.rotation.x = mascotFlying ? -0.2 : 0;
 
     // flicker the thruster flames; flick much faster while boosting to the target
     const flameSpeed = mascotFlying ? 60 : 25;
