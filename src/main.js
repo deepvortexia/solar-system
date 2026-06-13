@@ -373,8 +373,9 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
       });
     }
     // the old GLTF crown/ring is dropped in favour of the clean pulsing energy
-    // halo built below (after the pivot exists)
-    if (c.isMesh && (c.name.includes('Ring') || c.name.includes('Halo'))) {
+    // halo built below (after the pivot exists). Match case-insensitively so any
+    // Ring/Halo/Crown variant the export used is hidden.
+    if (c.isMesh && /ring|halo|crown/.test(c.name.toLowerCase())) {
       c.visible = false;
     }
     // mouth/smile: the glTF bakes the mouth's offset into its geometry (the node
@@ -407,7 +408,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
     new THREE.MeshStandardMaterial({ color: 0x00cfff, emissive: 0x00cfff, emissiveIntensity: 1.5, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
   );
   haloMesh.rotation.x = Math.PI / 2;
-  haloMesh.position.y = MASCOT_HEIGHT + 1.2;
+  haloMesh.position.y = MASCOT_HEIGHT / 2 + 0.5; // just above the head, not floating high
   pivot.add(haloMesh);
   halo = haloMesh;
 
