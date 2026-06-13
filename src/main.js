@@ -326,14 +326,35 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
         bigStart: -10, nextBig: 3 + Math.random() * 4,
       });
     }
-    // ring / halo: give it a cyan emissive glow we can pulse, then spin it on Y
+    // ring / halo: lay it perfectly flat (drop the authored ~30° tilt) so it
+    // floats horizontally above the head, give it a bright cyan glow, spin on Y
     if (c.isMesh && (c.name.includes('Ring') || c.name.includes('Halo'))) {
+      c.rotation.x = 0;
+      c.rotation.z = 0;
       if (c.material && 'emissive' in c.material) {
         c.material.emissive = new THREE.Color(0x00ffff);
-        c.material.emissiveIntensity = 1;
+        c.material.emissiveIntensity = 2;
         c.material.needsUpdate = true;
       }
       ringSpins.push({ mesh: c });
+
+      // glow aura: a second, slightly larger + thinner pure-cyan ring sharing the
+      // halo's centre and Y spin (added as a child). Built once, on the outer halo.
+      if (!c.name.includes('Inner')) {
+        c.geometry.computeBoundingBox();
+        const bb = c.geometry.boundingBox;
+        const tube = (bb.max.y - bb.min.y) / 2;         // half-thickness ≈ tube radius
+        const major = (bb.max.x - bb.min.x) / 2 - tube; // outer extent minus the tube
+        const aura = new THREE.Mesh(
+          new THREE.TorusGeometry(major * 1.1, tube * 0.7, 16, 64),
+          new THREE.MeshStandardMaterial({
+            color: 0x000000, emissive: 0x00ffff, emissiveIntensity: 2.0,
+            transparent: true, opacity: 0.6, depthWrite: false,
+          }),
+        );
+        aura.rotation.x = Math.PI / 2; // TorusGeometry lies in XY; lay it flat (XZ)
+        c.add(aura);                   // inherits the halo's position + Y spin
+      }
     }
     // mouth/smile: the glTF bakes the mouth's offset into its geometry (the node
     // sits at the model origin), so rotating the mesh would swing it off the face
@@ -613,10 +634,10 @@ function animate() {
       arm.mesh.rotation.z = arm.baseZ + Math.sin(t * 1.5 + arm.phase) * amp;
     }
 
-    // ring / halo: continuous self-spin plus a cyan glow pulsing 0.5 -> 1.5
+    // ring / halo: continuous Y self-spin plus a cyan glow pulsing 1.5 -> 3.5
     for (const { mesh } of ringSpins) {
       mesh.rotation.y += 0.8 * dt;
-      if (mesh.material) mesh.material.emissiveIntensity = 1 + Math.sin(t * 2) * 0.5;
+      if (mesh.material) mesh.material.emissiveIntensity = 2.5 + Math.sin(t * 2) * 1.0;
     }
 
     // mouth: every 4-8s pick a new expression and smoothly rotate toward it.
