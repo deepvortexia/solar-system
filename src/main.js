@@ -485,7 +485,8 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 document.getElementById('close-panel').addEventListener('click', () => {
   panel.classList.remove('open');
   followTarget = null;
-  flyMascotHome();
+  // intentionally no flyMascotHome(): the mascot keeps orbiting the selected
+  // planet after the panel is dismissed; only empty-space taps / reset send it home
 });
 
 document.getElementById('reset-view').addEventListener('click', resetView);
@@ -504,7 +505,7 @@ panel.addEventListener('touchend', (e) => {
   if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
     panel.classList.remove('open');
     followTarget = null;
-    flyMascotHome();
+    // swipe-down only dismisses the panel; the mascot stays orbiting the planet
   }
 }, { passive: true });
 
