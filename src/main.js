@@ -247,6 +247,37 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   document.querySelector('#loading p').textContent = 'Failed to load scene: ' + err.message;
 });
 
+// ---------- mascot ring "galaxy" texture ----------
+// A starfield painted on a canvas: black field with ~80 white/gold dots, a few
+// larger ones haloed by a soft radial glow. Used as the ring's emissive map.
+function makeGalaxyTexture() {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 80; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const gold = Math.random() < 0.5;
+    const big = Math.random() < 0.25;
+    const r = big ? 2 + Math.random() * 2 : 0.6 + Math.random() * 1.2;
+    if (big) { // soft glow halo around the larger stars
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+      g.addColorStop(0, gold ? 'rgba(255,215,0,0.9)' : 'rgba(255,255,255,0.9)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = gold ? '#FFD700' : '#ffffff';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // ---------- mascot ----------
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
@@ -254,7 +285,8 @@ let mascotLight = null;     // point light that follows the mascot (set on load)
 const flames = [];          // thruster-flame meshes, flickered in the render loop
 const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
 const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
-const ringSpins = [];       // [{ mesh }] — cyan glow pulse + continuous Y self-spin
+const ringSpins = [];       // [{ mesh }] — starfield ring, gold/white glow + fast Y spin
+const ringParticles = [];   // [{ mesh, radius, speed, phase }] — golden orbiters
 let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
@@ -275,6 +307,8 @@ const flightFrom = new THREE.Vector3();
 const _planetWorld = new THREE.Vector3();
 const _mascotDest = new THREE.Vector3();
 const _lightDir = new THREE.Vector3(); // mascot -> camera, for the follow light
+const _ringColor = new THREE.Color();  // scratch for the gold<->white ring cycle
+const _white = new THREE.Color(0xffffff);
 
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
@@ -293,6 +327,9 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   mascotLight = new THREE.PointLight(0xffffff, 3, 0, 0);
   mascotLight.position.set(0, MASCOT_Y, 6);
   scene.add(mascotLight);
+
+  const galaxyTex = makeGalaxyTexture(); // shared starfield map for the ring(s)
+  let haloMesh = null;                   // outer ring — anchors the orbiting particles
 
   // emissive flames/halo/buttons already carry emission from the glTF; make sure
   // they aren't dimmed, and record the flame meshes so they can flicker
@@ -326,35 +363,20 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
         bigStart: -10, nextBig: 3 + Math.random() * 4,
       });
     }
-    // ring / halo: lay it perfectly flat (drop the authored ~30° tilt) so it
-    // floats horizontally above the head, give it a bright cyan glow, spin on Y
+    // ring / halo: lay it flat and turn it into a "mini galaxy" — a starfield
+    // emissive map glowing gold/white, spun fast on Y (pulse/colour in the loop).
+    // The orbiting golden particles are built after the pivot exists.
     if (c.isMesh && (c.name.includes('Ring') || c.name.includes('Halo'))) {
       c.rotation.x = 0;
       c.rotation.z = 0;
       if (c.material && 'emissive' in c.material) {
-        c.material.emissive = new THREE.Color(0x00ffff);
-        c.material.emissiveIntensity = 2;
+        c.material.emissive = new THREE.Color(0xFFD700);
+        c.material.emissiveMap = galaxyTex;
+        c.material.emissiveIntensity = 3;
         c.material.needsUpdate = true;
       }
       ringSpins.push({ mesh: c });
-
-      // glow aura: a second, slightly larger + thinner pure-cyan ring sharing the
-      // halo's centre and Y spin (added as a child). Built once, on the outer halo.
-      if (!c.name.includes('Inner')) {
-        c.geometry.computeBoundingBox();
-        const bb = c.geometry.boundingBox;
-        const tube = (bb.max.y - bb.min.y) / 2;         // half-thickness ≈ tube radius
-        const major = (bb.max.x - bb.min.x) / 2 - tube; // outer extent minus the tube
-        const aura = new THREE.Mesh(
-          new THREE.TorusGeometry(major * 1.1, tube * 0.7, 16, 64),
-          new THREE.MeshStandardMaterial({
-            color: 0x000000, emissive: 0x00ffff, emissiveIntensity: 2.0,
-            transparent: true, opacity: 0.6, depthWrite: false,
-          }),
-        );
-        aura.rotation.x = Math.PI / 2; // TorusGeometry lies in XY; lay it flat (XZ)
-        c.add(aura);                   // inherits the halo's position + Y spin
-      }
+      if (!c.name.includes('Inner')) haloMesh = c; // outer ring anchors the particles
     }
     // mouth/smile: the glTF bakes the mouth's offset into its geometry (the node
     // sits at the model origin), so rotating the mesh would swing it off the face
@@ -378,6 +400,39 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   pivot.position.set(0, MASCOT_Y, 0);
   scene.add(pivot);
   mascot = pivot;
+
+  // golden particles orbiting the head at the ring's height. Parented to the
+  // pivot (scale 1, so world-unit sizes) they travel with the mascot anywhere.
+  if (haloMesh) {
+    pivot.updateMatrixWorld(true);
+    haloMesh.geometry.computeBoundingBox();
+    const bb = haloMesh.geometry.boundingBox;
+    const tube = (bb.max.y - bb.min.y) / 2;
+    const major = (bb.max.x - bb.min.x) / 2 - tube;
+    const ws = haloMesh.getWorldScale(new THREE.Vector3());
+    const ringR = major * Math.max(ws.x, ws.z); // ring radius in world units
+    const galaxy = new THREE.Group();
+    galaxy.position.copy(pivot.worldToLocal(haloMesh.getWorldPosition(new THREE.Vector3())));
+    pivot.add(galaxy);
+    for (let i = 0; i < 24; i++) {
+      const sparkle = i % 4 === 0; // every 4th: larger + brighter gold sparkle
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(sparkle ? 0.12 : 0.08, 8, 8),
+        new THREE.MeshStandardMaterial({
+          color: 0x000000,
+          emissive: new THREE.Color(sparkle ? 0xFFA500 : 0xFFD700),
+          emissiveIntensity: sparkle ? 2.6 : 1.6,
+        }),
+      );
+      galaxy.add(mesh);
+      ringParticles.push({
+        mesh,
+        radius: ringR + Math.random() * 0.8, // ringR .. ringR + 0.8
+        speed: 0.4 + Math.random() * 1.2,    // each orbits at its own pace
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
 
   // floating name label, same sprite/canvas system as the planets. The model is
   // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
@@ -634,10 +689,23 @@ function animate() {
       arm.mesh.rotation.z = arm.baseZ + Math.sin(t * 1.5 + arm.phase) * amp;
     }
 
-    // ring / halo: continuous Y self-spin plus a cyan glow pulsing 1.5 -> 3.5
+    // ring / halo: fast Y spin; pulse intensity 2.0->4.0 and cycle the emissive
+    // colour gold<->white so the starfield map shimmers
+    _ringColor.set(0xFFD700).lerp(_white, (Math.sin(t * 2) + 1) / 2);
     for (const { mesh } of ringSpins) {
-      mesh.rotation.y += 0.8 * dt;
-      if (mesh.material) mesh.material.emissiveIntensity = 2.5 + Math.sin(t * 2) * 1.0;
+      mesh.rotation.y += 1.6 * dt;
+      if (mesh.material) {
+        mesh.material.emissiveIntensity = 3.0 + Math.sin(t * 2) * 1.0;
+        mesh.material.emissive.copy(_ringColor);
+      }
+    }
+
+    // golden particles: each sweeps its own circular orbit with a gentle Y bob
+    for (const p of ringParticles) {
+      const a = t * p.speed + p.phase;
+      p.mesh.position.set(Math.cos(a) * p.radius,
+                          Math.sin(t * 1.5 + p.phase) * 0.15,
+                          Math.sin(a) * p.radius);
     }
 
     // mouth: every 4-8s pick a new expression and smoothly rotate toward it.
