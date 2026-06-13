@@ -389,6 +389,18 @@ const _flyDir = new THREE.Vector3();   // mascot -> destination, for flight head
 const flightCamOffset = new THREE.Vector3(); // camera->Terra offset held during flight
 const _camDesired = new THREE.Vector3();     // scratch for the follow-camera target
 
+// arrival "punch-in": a one-shot zoom fired when Terra reaches a planet, pulling the
+// distant follow-camera close on the Terra+planet pair, then handing back to OrbitControls.
+// Distinct from camera-follow (mid-flight tracking) and resetting (overview pull-back).
+let arrivalZooming = false;
+let arrivalZoomStart = 0;
+const ARRIVAL_ZOOM_TIME = 1.75;               // seconds, ease-out
+const arrivalCamFrom = new THREE.Vector3();
+const arrivalCamTo = new THREE.Vector3();
+const arrivalTargetFrom = new THREE.Vector3();
+const arrivalTargetTo = new THREE.Vector3();
+const _arrivalDir = new THREE.Vector3();
+
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
 
@@ -528,6 +540,7 @@ function flyMascotHome() {
 
 function startMascotFlight() {
   if (!mascot) return;
+  arrivalZooming = false; // a new flight supersedes any in-progress arrival punch-in
   flightFrom.copy(mascot.position);
   flightStart = clock.elapsedTime;
   mascotFlying = true;
@@ -539,6 +552,32 @@ function startMascotFlight() {
   flightDuration = THREE.MathUtils.clamp(dist / 8, 3, 15);
   // remember the current camera->Terra offset so the camera can track her in flight
   flightCamOffset.subVectors(camera.position, flightFrom);
+}
+
+// fire the one-shot arrival punch-in: frame the Terra+planet pair up close
+function startArrivalZoom() {
+  if (!mascot || !mascotTarget) return;
+  mascotTarget.getWorldPosition(_planetWorld);
+  // close framing target: the midpoint between Terra and the planet she now orbits
+  arrivalTargetTo.addVectors(mascot.position, _planetWorld).multiplyScalar(0.5);
+  // close distance from the planet's visual radius + Terra's orbit distance around it
+  let pr = 1;
+  if (mascotTarget.isMesh) {
+    if (!mascotTarget.geometry.boundingSphere) mascotTarget.geometry.computeBoundingSphere();
+    const sc = mascotTarget.getWorldScale(new THREE.Vector3());
+    pr = mascotTarget.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z);
+  }
+  const zoomFactor = window.matchMedia('(max-width: 600px)').matches ? 3.0 : 2.2;
+  const dist = (pr + mascotOrbitRadius) * zoomFactor;
+  // keep the current viewing direction (no jarring flip): pull in along camera->midpoint
+  _arrivalDir.subVectors(camera.position, arrivalTargetTo);
+  if (_arrivalDir.lengthSq() < 1e-6) _arrivalDir.copy(OVERVIEW_DIR); // degenerate fallback
+  _arrivalDir.normalize();
+  arrivalCamTo.copy(arrivalTargetTo).addScaledVector(_arrivalDir, dist);
+  arrivalCamFrom.copy(camera.position);
+  arrivalTargetFrom.copy(controls.target);
+  arrivalZoomStart = clock.elapsedTime;
+  arrivalZooming = true;
 }
 
 // where the mascot wants to be this frame: orbiting the live (still-moving)
@@ -626,6 +665,7 @@ function computeOverviewPosition(out) {
 
 function resetView() {
   followTarget = null;
+  arrivalZooming = false; // overview pull-back supersedes any arrival punch-in
   panel.classList.remove('open');
   flyMascotHome();
   // primary job now: pull back to show the ENTIRE system. Fall back to the close-up
@@ -677,7 +717,8 @@ let downAt = null;
 let lastEmptyTap = { t: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener('pointerdown', (e) => {
   downAt = { x: e.clientX, y: e.clientY };
-  resetting = false; // user grabbed the view mid-reset
+  resetting = false;      // user grabbed the view mid-reset
+  arrivalZooming = false; // ...or mid arrival punch-in — hand them control immediately
 });
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!downAt) return;
@@ -782,6 +823,7 @@ function animate() {
       mascot.position.lerpVectors(flightFrom, dest, ease);
       if (p >= 1) {                            // arrived: hand off to steady orbit
         mascotFlying = false;
+        if (mascotTarget) startArrivalZoom();  // punch in close on Terra + the planet
         if (mascotArrivalCb) { const cb = mascotArrivalCb; mascotArrivalCb = null; cb(); }
       }
     } else {
@@ -901,7 +943,9 @@ function animate() {
     }
   }
 
-  if (followTarget) {
+  // arrival punch-in owns the camera while it runs, so don't let followTarget tug
+  // the look-at toward the planet mid-zoom
+  if (followTarget && !arrivalZooming) {
     followTarget.getWorldPosition(targetPos);
     controls.target.lerp(targetPos, 0.06);
   }
@@ -914,6 +958,17 @@ function animate() {
     _camDesired.addVectors(mascot.position, flightCamOffset);
     camera.position.lerp(_camDesired, 0.05);
     controls.target.lerp(mascot.position, 0.05);
+  }
+
+  // arrival punch-in: a one-shot ease-out zoom from the far follow-camera onto the
+  // close Terra+planet framing. On completion, OrbitControls takes over (followTarget
+  // resumes keeping the orbiting planet centred). Yielded if a reset takes over.
+  if (arrivalZooming && !resetting) {
+    const k = THREE.MathUtils.clamp((clock.elapsedTime - arrivalZoomStart) / ARRIVAL_ZOOM_TIME, 0, 1);
+    const e = 1 - Math.pow(1 - k, 3); // cubic ease-out
+    camera.position.lerpVectors(arrivalCamFrom, arrivalCamTo, e);
+    controls.target.lerpVectors(arrivalTargetFrom, arrivalTargetTo, e);
+    if (k >= 1) arrivalZooming = false;
   }
 
   controls.update();
