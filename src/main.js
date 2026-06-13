@@ -243,6 +243,17 @@ let mascot = null;          // a pivot group; bobbed/swayed in the render loop
 const flames = [];          // thruster-flame meshes, flickered in the render loop
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
+const MASCOT_HOME = new THREE.Vector3(0, MASCOT_Y, 0);
+
+// flight state: the mascot flies to a clicked planet, orbits it, then flies home
+let mascotTarget = null;    // planet to orbit, or null to return home
+let mascotOrbitRadius = 0;  // distance from the planet centre to circle at
+let mascotFlying = false;   // true during the 2s transit (boost the flames)
+let flightStart = 0;        // clock time the current flight began
+const FLIGHT_TIME = 2;      // seconds
+const flightFrom = new THREE.Vector3();
+const _planetWorld = new THREE.Vector3();
+const _mascotDest = new THREE.Vector3();
 
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
@@ -283,6 +294,50 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
+
+// send the mascot off to orbit a clicked planet, just clear of its surface
+function flyMascotTo(planet) {
+  let radius = 1;
+  if (planet.isMesh) {
+    if (!planet.geometry.boundingSphere) planet.geometry.computeBoundingSphere();
+    const sc = planet.getWorldScale(new THREE.Vector3());
+    radius = planet.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z);
+  }
+  mascotTarget = planet;
+  mascotOrbitRadius = radius + 2.5; // ~2-3 units clear of the surface
+  startMascotFlight();
+}
+
+function flyMascotHome() {
+  if (!mascotTarget && !mascotFlying) return; // already home — nothing to do
+  mascotTarget = null;
+  mascotOrbitRadius = 0;
+  startMascotFlight();
+}
+
+function startMascotFlight() {
+  if (!mascot) return;
+  flightFrom.copy(mascot.position);
+  flightStart = clock.elapsedTime;
+  mascotFlying = true;
+}
+
+// where the mascot wants to be this frame: orbiting the live (still-moving)
+// target, or bobbing at its home spot above the Sun
+function mascotDestination(t) {
+  if (mascotTarget) {
+    mascotTarget.getWorldPosition(_planetWorld);
+    const a = t * 0.8; // angular speed of the mascot's orbit around the planet
+    _mascotDest.set(
+      _planetWorld.x + Math.cos(a) * mascotOrbitRadius,
+      _planetWorld.y + Math.sin(t * 1.1) * 0.6,
+      _planetWorld.z + Math.sin(a) * mascotOrbitRadius,
+    );
+  } else {
+    _mascotDest.set(MASCOT_HOME.x, MASCOT_HOME.y + Math.sin(t * 1.1) * 0.6, MASCOT_HOME.z);
+  }
+  return _mascotDest;
+}
 
 // ---------- picking ----------
 const raycaster = new THREE.Raycaster();
@@ -340,6 +395,7 @@ let resetting = false;
 function resetView() {
   followTarget = null;
   panel.classList.remove('open');
+  flyMascotHome();
   resetting = true; // animated in the render loop
 }
 
@@ -359,9 +415,11 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (obj) {
     followTarget = obj;
     showInfo(obj.name);
+    flyMascotTo(obj);
   } else {
     panel.classList.remove('open');
     followTarget = null;
+    flyMascotHome();
     // double-tap on empty space resets the view
     const now = performance.now();
     if (now - lastEmptyTap.t < 350 &&
@@ -389,6 +447,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 document.getElementById('close-panel').addEventListener('click', () => {
   panel.classList.remove('open');
   followTarget = null;
+  flyMascotHome();
 });
 
 document.getElementById('reset-view').addEventListener('click', resetView);
@@ -407,6 +466,7 @@ panel.addEventListener('touchend', (e) => {
   if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
     panel.classList.remove('open');
     followTarget = null;
+    flyMascotHome();
   }
 }, { passive: true });
 
@@ -424,11 +484,20 @@ function animate() {
 
   if (mascot) {
     const t = clock.elapsedTime;
-    mascot.position.y = MASCOT_Y + Math.sin(t * 1.1) * 0.6; // gentle bob
-    mascot.rotation.y = Math.sin(t * 0.4) * 0.4;            // sway, keeps the face toward you
-    // flicker the thruster flames: a fast sine wobbles each flame's length
+    const dest = mascotDestination(t); // live target: orbit point or home, with bob
+    if (mascotFlying) {
+      const p = THREE.MathUtils.clamp((t - flightStart) / FLIGHT_TIME, 0, 1);
+      const ease = p * p * (3 - 2 * p);        // smoothstep ease in/out
+      mascot.position.lerpVectors(flightFrom, dest, ease);
+      if (p >= 1) mascotFlying = false;        // arrived: hand off to steady orbit/bob
+    } else {
+      mascot.position.copy(dest);
+    }
+    mascot.rotation.y = Math.sin(t * 0.4) * 0.4; // slow sway, keeps the face toward you
+    // flicker the thruster flames; flick much faster while boosting to the target
+    const flameSpeed = mascotFlying ? 60 : 25;
     for (const { mesh, baseScaleY } of flames) {
-      mesh.scale.y = baseScaleY * (1 + Math.sin(t * 25) * 0.25);
+      mesh.scale.y = baseScaleY * (1 + Math.sin(t * flameSpeed) * 0.25);
     }
   }
 
