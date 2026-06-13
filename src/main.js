@@ -274,6 +274,7 @@ const FLIGHT_TIME = 2;      // seconds
 const flightFrom = new THREE.Vector3();
 const _planetWorld = new THREE.Vector3();
 const _mascotDest = new THREE.Vector3();
+const _lightDir = new THREE.Vector3(); // mascot -> camera, for the follow light
 
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
@@ -303,6 +304,15 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
     }
     if (c.isMesh && c.name.includes('Flame')) {
       flames.push({ mesh: c, baseScaleY: c.scale.y });
+    }
+    // the back/jetpack ("Pack"/"Back") can read as a black bar when the light is
+    // on the far side, so give those a faint self-fill of their own colour. Only
+    // touch matte parts (black emissive) so the glowing pack lights stay bright.
+    if (c.isMesh && (c.name.includes('Pack') || c.name.includes('Back')) &&
+        c.material && c.material.emissive && c.material.emissive.equals(new THREE.Color(0x000000))) {
+      c.material.emissive = c.material.color ? c.material.color.clone() : new THREE.Color(0x888888);
+      c.material.emissiveIntensity = 0.25;
+      c.material.needsUpdate = true;
     }
     // each eye keeps its own randomized blink clock so the two blink independently
     if (c.isMesh && c.name.includes('Eye')) {
@@ -556,12 +566,17 @@ function animate() {
     } else {
       mascot.position.copy(dest);
     }
-    // the point light rides just in front of the mascot wherever it travels
-    mascotLight.position.set(mascot.position.x, mascot.position.y, mascot.position.z + 6);
+    // the point light follows the mascot exactly, nudged toward the camera so the
+    // side we're looking at is always the lit side
+    mascotLight.position.copy(mascot.position);
+    _lightDir.subVectors(camera.position, mascot.position).normalize().multiplyScalar(6);
+    mascotLight.position.add(_lightDir);
 
-    // always face the camera, but on the Y axis only so the body never tilts;
-    // add a slight forward lean while in transit so it reads as "boosting"
-    mascot.lookAt(camera.position);
+    // face the camera on the Y axis only (lookAt would tilt the body): point the
+    // mascot's +Z at the camera via the XZ-plane bearing. A small forward lean
+    // while in transit reads as "boosting".
+    mascot.rotation.y = Math.atan2(camera.position.x - mascot.position.x,
+                                   camera.position.z - mascot.position.z);
     mascot.rotation.z = 0;
     mascot.rotation.x = mascotFlying ? -0.2 : 0;
 
