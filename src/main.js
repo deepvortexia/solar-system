@@ -142,7 +142,7 @@ function makeLabelTexture(text) {
 
 const labels = []; // { sprite, body, offset }
 
-function addLabel(body) {
+function addLabel(body, text = body.name, offsetOverride = null) {
   // measure the body's own mesh, not Box3.setFromObject: that would include
   // children (sun halo sprite, Saturn's rings) and inflate by the box diagonal
   let radius = 1;
@@ -151,7 +151,7 @@ function addLabel(body) {
     const s = body.getWorldScale(new THREE.Vector3());
     radius = body.geometry.boundingSphere.radius * Math.max(s.x, s.y, s.z);
   }
-  const tex = makeLabelTexture(body.name);
+  const tex = makeLabelTexture(text);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: tex,
     transparent: true,
@@ -164,7 +164,7 @@ function addLabel(body) {
     : THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
   sprite.scale.set(h * tex.image.width / tex.image.height, h, 1);
   scene.add(sprite);
-  labels.push({ sprite, body, offset: radius + h * 0.75 });
+  labels.push({ sprite, body, offset: offsetOverride ?? radius + h * 0.75 });
 }
 
 // ---------- load the Blender-built GLTF ----------
@@ -336,6 +336,10 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   pivot.position.set(0, MASCOT_Y, 0);
   scene.add(pivot);
   mascot = pivot;
+
+  // floating name label, same sprite/canvas system as the planets. The model is
+  // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
+  addLabel(mascot, 'Terra', MASCOT_HEIGHT / 2 + 1.3);
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
