@@ -35,7 +35,13 @@ const fit = THREE.MathUtils.clamp(window.innerHeight / window.innerWidth, 1, 1.9
 // closer + lower angle: look across the system (not down at it) so it reads vast, not flat.
 // scaled ~3x with the orbital layout so the framing ratio matches the larger system
 camera.position.set(90, 48, 138).multiplyScalar(fit);
-const HOME_POS = camera.position.clone();
+const HOME_POS = camera.position.clone(); // close-up Sun+Terra framing (kept for reference)
+
+// reset-view now frames the WHOLE system. The outermost extent is only known once
+// the GLTF loads and size-aware spacing runs, so it's filled in then; the overview
+// position is computed on demand (so it tracks the live aspect ratio after resizes).
+let systemExtent = 0; // outermost planet's orbit + its visual radius, in world units
+const OVERVIEW_DIR = new THREE.Vector3(0.6, 0.55, 1.0).normalize(); // ~25° above the plane, 3/4 view
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -324,10 +330,15 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
     }
   }
 
+  // outermost extent (Neptune's final orbit + its visual radius) drives the
+  // reset-view overview framing — derived from the real, size-aware-spaced radii
+  systemExtent = Math.max(...layout.map((e) => e.radius + e.visR));
+
   // surface the final computed layout (radii may exceed the 3x baseline where
   // measured sizes forced extra spacing) for inspection in the browser console
   console.log('[layout] final orbital radii:',
-    layout.map((e) => `${e.name} ${e.radius.toFixed(1)} (visR ${e.visR.toFixed(2)})`).join(' | '));
+    layout.map((e) => `${e.name} ${e.radius.toFixed(1)} (visR ${e.visR.toFixed(2)})`).join(' | '),
+    '| systemExtent', systemExtent.toFixed(1));
 
   for (const obj of clickable) {
     if (obj.name !== 'Sun') selfIlluminate(obj);
@@ -601,12 +612,33 @@ function showInfo(name) {
 }
 
 let resetting = false;
+const resetGoal = new THREE.Vector3(); // where the reset animation flies the camera to
+
+// distance so the whole system (bounding sphere ~ systemExtent) fits the frame,
+// using whichever of vertical/horizontal FOV is the tighter constraint, with a
+// little breathing room. Computed live so it tracks the current aspect ratio.
+function computeOverviewPosition(out) {
+  const vHalf = THREE.MathUtils.degToRad(camera.fov / 2);
+  const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+  const dist = (systemExtent / Math.sin(Math.min(vHalf, hHalf))) * 1.15;
+  return out.copy(OVERVIEW_DIR).multiplyScalar(dist);
+}
 
 function resetView() {
   followTarget = null;
   panel.classList.remove('open');
   flyMascotHome();
-  resetting = true; // animated in the render loop
+  // primary job now: pull back to show the ENTIRE system. Fall back to the close-up
+  // HOME_POS only if the layout hasn't been measured yet (GLTF still loading).
+  if (systemExtent > 0) {
+    computeOverviewPosition(resetGoal);
+    // make sure OrbitControls lets the camera reach the overview (its zoom-out cap
+    // may be tighter than the overview distance for the larger/portrait framings)
+    controls.maxDistance = Math.max(controls.maxDistance, resetGoal.length() * 1.05);
+  } else {
+    resetGoal.copy(HOME_POS);
+  }
+  resetting = true; // animated in the render loop (lerps camera -> resetGoal, target -> Sun)
 }
 
 // Cinematic click flow: clicking a planet sends Terra flying there, and the info
@@ -860,10 +892,10 @@ function animate() {
   }
 
   if (resetting) {
-    camera.position.lerp(HOME_POS, 0.08);
+    camera.position.lerp(resetGoal, 0.08);
     controls.target.lerp(ORIGIN, 0.08);
-    if (camera.position.distanceTo(HOME_POS) < 0.4) {
-      camera.position.copy(HOME_POS);
+    if (camera.position.distanceTo(resetGoal) < 0.4) {
+      camera.position.copy(resetGoal);
       controls.target.copy(ORIGIN);
       resetting = false;
     }
