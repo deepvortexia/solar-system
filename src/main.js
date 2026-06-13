@@ -186,7 +186,7 @@ function makeLabelTexture(text) {
 
 const labels = []; // { sprite, body, offset }
 
-function addLabel(body, text = body.name, offsetOverride = null) {
+function addLabel(body, text = body.name, offsetOverride = null, scaleMult = 1) {
   // measure the body's own mesh, not Box3.setFromObject: that would include
   // children (sun halo sprite, Saturn's rings) and inflate by the box diagonal
   let radius = 1;
@@ -200,12 +200,13 @@ function addLabel(body, text = body.name, offsetOverride = null) {
     map: tex,
     transparent: true,
     depthWrite: false,
-    depthTest: false, // never occluded: labels stay visible at any zoom
+    depthTest: false, // never occluded: labels stay visible at any zoom / distance
   }));
   sprite.renderOrder = 999; // draw after the scene so depthTest:false can't be overdrawn
-  const h = isSmallScreen
+  const base = isSmallScreen
     ? THREE.MathUtils.clamp(radius * 0.8, 1.6, 3.2) // legible on a 6" screen
     : THREE.MathUtils.clamp(radius * 0.55, 1.1, 2.4);
+  const h = base * scaleMult; // scaleMult lets Terra's label stand out (~1.4x)
   sprite.scale.set(h * tex.image.width / tex.image.height, h, 1);
   scene.add(sprite);
   labels.push({ sprite, body, offset: offsetOverride ?? radius + h * 0.75 });
@@ -434,7 +435,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
 
   // floating name label, same sprite/canvas system as the planets. The model is
   // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
-  addLabel(mascot, 'Terra', MASCOT_HEIGHT / 2 + 1.3);
+  addLabel(mascot, 'Terra', MASCOT_HEIGHT / 2 + 1.3, 1.4); // 1.4x bigger so Terra stands out
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
