@@ -314,9 +314,16 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
       }
       ringSpins.push({ mesh: c });
     }
-    // mouth/smile: remember its exact rest position + rotation so expressions
-    // (rotation only) never drift it off the face
+    // mouth/smile: the glTF bakes the mouth's offset into its geometry (the node
+    // sits at the model origin), so rotating the mesh would swing it off the face
+    // around a far pivot. Re-centre the geometry on the node origin and shift the
+    // node to compensate, so expression rotations spin the smile about its own
+    // centre and stay put. (Safe here: the Smile node has identity rotation/scale.)
     if (c.isMesh && !mouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
+      c.geometry.computeBoundingBox();
+      const gc = c.geometry.boundingBox.getCenter(new THREE.Vector3());
+      c.geometry.translate(-gc.x, -gc.y, -gc.z);
+      c.position.add(gc);
       mouth = {
         mesh: c, originalPosition: c.position.clone(), baseZ: c.rotation.z,
         target: MOUTH_SHAPES[0], nextExpr: 4 + Math.random() * 4,
