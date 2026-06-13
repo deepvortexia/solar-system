@@ -197,9 +197,19 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   const ORBIT_BASE = 0.25; // rad/s for a 1-Earth-year orbit
   const SPIN_BASE = 0.35;  // rad/s for a 24-hour day
 
+  // override the orbital radii authored in the GLTF (planets sit on +X from the
+  // origin) to spread the system out, especially the bunched-up inner planets
+  const ORBIT_RADII = {
+    Mercury: 14, Venus: 20, Earth: 28, Mars: 38,
+    Jupiter: 55, Saturn: 78, Uranus: 100, Neptune: 118,
+  };
+
   for (const [name, orbit] of Object.entries(ORBITS)) {
     const planet = root.getObjectByName(name);
     if (!planet) continue;
+
+    // push the planet to its new radius before attaching, so the pivot captures it
+    if (ORBIT_RADII[name] !== undefined) planet.position.x = ORBIT_RADII[name];
 
     const pivot = new THREE.Group();
     root.add(pivot);
