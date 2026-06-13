@@ -47,9 +47,21 @@ scene.add(sunLight);
 scene.add(new THREE.AmbientLight(0x223344, 0.5));
 
 // ---------- starfield ----------
+// Each star twinkles at its own rhythm: a custom shader reads a per-vertex `size`
+// and `alpha` attribute (a plain PointsMaterial only supports one shared size),
+// and the render loop drives them from a random phase + speed stored per star.
+const STAR_BASE_SIZE = 1.1;
+let starGeo = null;
+let starMat = null;
+let starPhases = null;
+let starSpeeds = null;
 {
   const count = isSmallScreen ? 1800 : 3000;
   const positions = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const alphas = new Float32Array(count);
+  starPhases = new Float32Array(count);
+  starSpeeds = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const r = 350 + Math.random() * 250;
     const theta = Math.random() * Math.PI * 2;
@@ -57,14 +69,46 @@ scene.add(new THREE.AmbientLight(0x223344, 0.5));
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.cos(phi);
     positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    starPhases[i] = Math.random() * Math.PI * 2;       // own starting point in the cycle
+    starSpeeds[i] = 0.5 + Math.random();               // own twinkle speed (0.5..1.5)
+    sizes[i] = STAR_BASE_SIZE;
+    alphas[i] = 0.85;
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({
-    color: 0xcdd6ff, size: 1.1, sizeAttenuation: true,
-    transparent: true, opacity: 0.85, depthWrite: false,
+  starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  starGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  starGeo.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+  starMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uColor: { value: new THREE.Color(0xcdd6ff) },
+      // matches PointsMaterial size-attenuation: gl_PointSize = size * scale / -z
+      uScale: { value: window.innerHeight * 0.5 * renderer.getPixelRatio() },
+    },
+    vertexShader: `
+      attribute float size;
+      attribute float alpha;
+      uniform float uScale;
+      varying float vAlpha;
+      void main() {
+        vAlpha = alpha;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (uScale / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying float vAlpha;
+      void main() {
+        vec2 d = gl_PointCoord - vec2(0.5);
+        if (dot(d, d) > 0.25) discard; // soft round point
+        gl_FragColor = vec4(uColor, vAlpha);
+      }
+    `,
   });
-  scene.add(new THREE.Points(geo, mat));
+  scene.add(new THREE.Points(starGeo, starMat));
 }
 
 // ---------- post-processing (no bloom: its separable blur creates boxy halos) ----------
@@ -247,37 +291,6 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   document.querySelector('#loading p').textContent = 'Failed to load scene: ' + err.message;
 });
 
-// ---------- mascot ring "galaxy" texture ----------
-// A starfield painted on a canvas: black field with ~80 white/gold dots, a few
-// larger ones haloed by a soft radial glow. Used as the ring's emissive map.
-function makeGalaxyTexture() {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 80; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const gold = Math.random() < 0.5;
-    const big = Math.random() < 0.25;
-    const r = big ? 2 + Math.random() * 2 : 0.6 + Math.random() * 1.2;
-    if (big) { // soft glow halo around the larger stars
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
-      g.addColorStop(0, gold ? 'rgba(255,215,0,0.9)' : 'rgba(255,255,255,0.9)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.fillStyle = gold ? '#FFD700' : '#ffffff';
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 // ---------- mascot ----------
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
@@ -285,8 +298,7 @@ let mascotLight = null;     // point light that follows the mascot (set on load)
 const flames = [];          // thruster-flame meshes, flickered in the render loop
 const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
 const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
-const ringSpins = [];       // [{ mesh }] — starfield ring, gold/white glow + fast Y spin
-const ringParticles = [];   // [{ mesh, radius, speed, phase }] — golden orbiters
+let halo = null;            // thin energy ring above Terra's head — pulses/breathes
 let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
@@ -668,6 +680,19 @@ function animate() {
 
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
+
+  // stars twinkle: each cycles its size + alpha at its own random phase/speed
+  {
+    const t = clock.elapsedTime;
+    const sizeArr = starGeo.attributes.size.array;
+    const alphaArr = starGeo.attributes.alpha.array;
+    for (let i = 0; i < starPhases.length; i++) {
+      sizeArr[i] = STAR_BASE_SIZE * (0.5 + 0.5 * Math.sin(t * starSpeeds[i] + starPhases[i]));
+      alphaArr[i] = 0.5 + 0.35 * Math.sin(t * starSpeeds[i] + starPhases[i] + 1.047);
+    }
+    starGeo.attributes.size.needsUpdate = true;
+    starGeo.attributes.alpha.needsUpdate = true;
+  }
 
   if (mascot) {
     const t = clock.elapsedTime;
