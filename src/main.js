@@ -241,9 +241,16 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 // Earth-headed astronaut, floating above the Sun near the centre of the system.
 let mascot = null;          // a pivot group; bobbed/swayed in the render loop
 const flames = [];          // thruster-flame meshes, flickered in the render loop
+const eyes = [];            // { mesh, baseY, offset } — blinked in the render loop
+const arms = [];            // { mesh, baseZ, phase } — idle-waved in the render loop
+const ringSpins = [];       // ring/halo meshes spun on Y in the render loop
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
 const MASCOT_HOME = new THREE.Vector3(0, MASCOT_Y, 0);
+
+// blink scheduling: one blink fires the eyes ~every 3-4s, each eye offset slightly
+let eyeBlinkStart = -10;    // clock time the current blink began (far past = idle)
+let eyeNextBlink = 2;       // clock time the next blink should fire
 
 // flight state: the mascot flies to a clicked planet, orbits it, then flies home
 let mascotTarget = null;    // planet to orbit, or null to return home
@@ -283,6 +290,17 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
     }
     if (c.isMesh && c.name.includes('Flame')) {
       flames.push({ mesh: c, baseScaleY: c.scale.y });
+    }
+    // stagger each eye by 0.1s so the two eyes never shut in perfect unison
+    if (c.isMesh && c.name.includes('Eye')) {
+      eyes.push({ mesh: c, baseY: c.scale.y, offset: eyes.length * 0.1 });
+    }
+    // alternate arm phases (π apart) so a left/right pair waves out of step
+    if (c.isMesh && c.name.includes('Arm')) {
+      arms.push({ mesh: c, baseZ: c.rotation.z, phase: arms.length * Math.PI });
+    }
+    if (c.isMesh && (c.name.includes('Ring') || c.name.includes('Halo'))) {
+      ringSpins.push(c);
     }
   });
 
@@ -499,6 +517,25 @@ function animate() {
     for (const { mesh, baseScaleY } of flames) {
       mesh.scale.y = baseScaleY * (1 + Math.sin(t * flameSpeed) * 0.25);
     }
+
+    // eyes blink: schedule the next blink 3-4s out, then squash each eye's Y to
+    // 0.1 for 0.1s — the per-eye offset keeps the two eyes from blinking in sync
+    if (t >= eyeNextBlink) {
+      eyeBlinkStart = t;
+      eyeNextBlink = t + 3 + Math.random(); // next blink in 3-4 seconds
+    }
+    for (const { mesh, baseY, offset } of eyes) {
+      const bt = t - eyeBlinkStart - offset;
+      mesh.scale.y = (bt >= 0 && bt < 0.1) ? baseY * 0.1 : baseY;
+    }
+
+    // arms wave: gentle idle sway on the Z axis, each arm phase-shifted
+    for (const { mesh, baseZ, phase } of arms) {
+      mesh.rotation.z = baseZ + Math.sin(t * 1.5 + phase) * 0.3;
+    }
+
+    // ring / halo spins continuously on its own Y axis
+    for (const mesh of ringSpins) mesh.rotation.y += 0.8 * dt;
   }
 
   for (const { sprite, body, offset } of labels) {
