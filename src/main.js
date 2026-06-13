@@ -244,17 +244,15 @@ const flames = [];          // thruster-flame meshes, flickered in the render lo
 const eyes = [];            // { mesh, baseY, blinkStart, nextBlink } — blink independently
 const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idle + big waves
 const ringSpins = [];       // [{ mesh }] — cyan glow pulse + continuous Y self-spin
-let mouth = null;           // { mesh, base*, target, nextExpr } — morphs between faces
+let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
 const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
 const MASCOT_HOME = new THREE.Vector3(0, MASCOT_Y, 0);
 
-// the faces the mouth cycles between (scale/rotation relative to its rest pose)
-const MOUTH_SHAPES = [
-  { sx: 1.0, sy: 1.0, rz: 0.0 },   // normal smile
-  { sx: 0.4, sy: 1.5, rz: 0.0 },   // surprised "O"
-  { sx: 1.0, sy: 1.0, rz: 0.3 },   // sad curve
-];
+// faces the mouth cycles between — rotation.z only (relative to its rest pose).
+// Scaling shifted the mesh off the face because its geometry isn't centred on
+// its own origin, so expressions are pure rotation and the position is pinned.
+const MOUTH_SHAPES = [0.0, 0.3, -0.3]; // happy (flat), sad (curl up), surprised
 
 // flight state: the mascot flies to a clicked planet, orbits it, then flies home
 let mascotTarget = null;    // planet to orbit, or null to return home
@@ -316,10 +314,11 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
       }
       ringSpins.push({ mesh: c });
     }
-    // mouth/smile: store its rest pose so expressions can morph relative to it
+    // mouth/smile: remember its exact rest position + rotation so expressions
+    // (rotation only) never drift it off the face
     if (c.isMesh && !mouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
       mouth = {
-        mesh: c, baseX: c.scale.x, baseY: c.scale.y, baseZ: c.rotation.z,
+        mesh: c, originalPosition: c.position.clone(), baseZ: c.rotation.z,
         target: MOUTH_SHAPES[0], nextExpr: 4 + Math.random() * 4,
       };
     }
@@ -574,15 +573,15 @@ function animate() {
       if (mesh.material) mesh.material.emissiveIntensity = 1 + Math.sin(t * 2) * 0.5;
     }
 
-    // mouth: every 4-8s pick a new expression and smoothly morph toward it
+    // mouth: every 4-8s pick a new expression and smoothly rotate toward it.
+    // Position is pinned to its rest pose every frame so it stays on the face.
     if (mouth) {
       if (t >= mouth.nextExpr) {
         mouth.target = MOUTH_SHAPES[Math.floor(Math.random() * MOUTH_SHAPES.length)];
         mouth.nextExpr = t + 4 + Math.random() * 4; // 4-8s
       }
-      mouth.mesh.scale.x = THREE.MathUtils.lerp(mouth.mesh.scale.x, mouth.baseX * mouth.target.sx, 0.1);
-      mouth.mesh.scale.y = THREE.MathUtils.lerp(mouth.mesh.scale.y, mouth.baseY * mouth.target.sy, 0.1);
-      mouth.mesh.rotation.z = THREE.MathUtils.lerp(mouth.mesh.rotation.z, mouth.baseZ + mouth.target.rz, 0.1);
+      mouth.mesh.position.copy(mouth.originalPosition);
+      mouth.mesh.rotation.z = THREE.MathUtils.lerp(mouth.mesh.rotation.z, mouth.baseZ + mouth.target, 0.1);
     }
   }
 
