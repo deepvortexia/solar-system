@@ -301,6 +301,7 @@ const MOUTH_SHAPES = [0.0, 0.3, -0.3]; // happy (flat), sad (curl up), surprised
 let mascotTarget = null;    // planet to orbit, or null to return home
 let mascotOrbitRadius = 0;  // distance from the planet centre to circle at
 let mascotFlying = false;   // true during the 2s transit (boost the flames)
+let mascotArrivalCb = null; // called once when a flight to a planet completes
 let flightStart = 0;        // clock time the current flight began
 const FLIGHT_TIME = 2;      // seconds
 const flightFrom = new THREE.Vector3();
@@ -443,7 +444,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
 });
 
 // send the mascot off to orbit a clicked planet, just clear of its surface
-function flyMascotTo(planet) {
+function flyMascotTo(planet, onArrival = null) {
   let radius = 1;
   if (planet.isMesh) {
     if (!planet.geometry.boundingSphere) planet.geometry.computeBoundingSphere();
@@ -452,6 +453,7 @@ function flyMascotTo(planet) {
   }
   mascotTarget = planet;
   mascotOrbitRadius = radius + 2.5; // ~2-3 units clear of the surface
+  mascotArrivalCb = onArrival;      // fired once the flight completes
   startMascotFlight();
 }
 
@@ -459,6 +461,7 @@ function flyMascotHome() {
   if (!mascotTarget && !mascotFlying) return; // already home — nothing to do
   mascotTarget = null;
   mascotOrbitRadius = 0;
+  mascotArrivalCb = null; // cancel any pending arrival reveal
   startMascotFlight();
 }
 
@@ -548,27 +551,36 @@ function resetView() {
   resetting = true; // animated in the render loop
 }
 
-// On phones the info panel is a bottom sheet (see the max-width:600px CSS) that
-// overlaps Terra. There we hide her while the sheet is open and defer her flight
-// until it closes; desktop (side panel) keeps the original behaviour untouched.
-const isSheetLayout = () => window.matchMedia('(max-width: 600px)').matches;
-let pendingFlyTarget = null; // planet to fly to once the sheet closes (mobile)
+// Cinematic click flow: clicking a planet sends Terra flying there, and the info
+// only appears once she arrives. A small top pill shows a "flying…" hint during
+// transit; on phones it doubles as a compact arrival badge (the bottom-sheet panel
+// would overlap Terra, so phones get the pill instead of the panel).
+const isMobileLayout = () => window.matchMedia('(max-width: 600px)').matches;
+const badge = document.getElementById('planet-badge');
+let badgeTimer = 0;
 
-function setTerraVisible(visible) {
-  if (mascot) mascot.visible = visible;           // model + orbiting particles
-  if (mascotLight) mascotLight.visible = visible; // her follow light
-  const lbl = labels.find((l) => l.body === mascot);
-  if (lbl) lbl.sprite.visible = visible;          // the "Terra" name label
+function showBadge(text, autoHideMs = 0) {
+  clearTimeout(badgeTimer);
+  badge.textContent = text;
+  badge.classList.add('visible');
+  if (autoHideMs) badgeTimer = setTimeout(() => badge.classList.remove('visible'), autoHideMs);
 }
 
-// mobile: the sheet just closed — reveal Terra and send her to the deferred planet.
-// Returns true if it consumed a pending flight, so callers can skip their default.
-function revealTerraAndFly() {
-  if (!pendingFlyTarget) return false;
-  setTerraVisible(true);
-  flyMascotTo(pendingFlyTarget);
-  pendingFlyTarget = null;
-  return true;
+function hideBadge() {
+  clearTimeout(badgeTimer);
+  badge.classList.remove('visible');
+}
+
+// fired when Terra reaches the planet: reveal the info — the side panel on desktop,
+// a compact auto-hiding badge on phones
+function showArrival(name) {
+  if (isMobileLayout()) {
+    const d = PLANET_DATA[name];
+    showBadge(d ? `${name} · ${d.type}` : name, 4000); // compact pill, auto-hide after 4s
+  } else {
+    hideBadge();
+    showInfo(name); // side panel, fades in via CSS
+  }
 }
 
 let downAt = null;
@@ -586,19 +598,15 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const obj = pick(e);
   if (obj) {
     followTarget = obj;
-    showInfo(obj.name);
-    if (isSheetLayout()) {
-      pendingFlyTarget = obj;  // mobile: defer the flight until the sheet closes
-      setTerraVisible(false);  // hide Terra so she doesn't overlap the bottom sheet
-    } else {
-      flyMascotTo(obj);        // desktop: fly immediately (unchanged)
-    }
+    panel.classList.remove('open');  // info appears on arrival, not on click
+    // Terra flies to the planet; the info is revealed only when she arrives there
+    showBadge(`Flying to ${obj.name}…`);
+    flyMascotTo(obj, () => showArrival(obj.name));
   } else {
     panel.classList.remove('open');
+    hideBadge();
     followTarget = null;
-    // mobile: a pending selection reveals Terra and flies her there; otherwise
-    // (desktop, or nothing pending) send her home as before
-    if (!revealTerraAndFly()) flyMascotHome();
+    flyMascotHome();
     // double-tap on empty space resets the view
     const now = performance.now();
     if (now - lastEmptyTap.t < 350 &&
@@ -626,9 +634,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 document.getElementById('close-panel').addEventListener('click', () => {
   panel.classList.remove('open');
   followTarget = null;
-  // mobile: reveal Terra and fly her to the planet selected while the sheet was up.
-  // desktop: no pending target, so this is a no-op and the mascot keeps orbiting.
-  revealTerraAndFly();
+  // the panel just closes; Terra keeps orbiting the planet she flew to
 });
 
 document.getElementById('reset-view').addEventListener('click', resetView);
@@ -647,7 +653,7 @@ panel.addEventListener('touchend', (e) => {
   if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
     panel.classList.remove('open');
     followTarget = null;
-    revealTerraAndFly(); // reveal Terra and fly her to the selected planet
+    // swipe-down only dismisses the panel; Terra keeps orbiting
   }
 }, { passive: true });
 
@@ -663,7 +669,7 @@ function animate() {
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
 
-  if (mascot && mascot.visible) { // visible=false (mobile, sheet open) pauses her
+  if (mascot) {
     const t = clock.elapsedTime;
     const dest = mascotDestination(t); // live target: orbit point or home, with bob
     const fe = t - flightStart;        // seconds elapsed into the current flight
@@ -671,7 +677,10 @@ function animate() {
     if (mascotFlying) {
       const ease = p * p * (3 - 2 * p);        // smoothstep ease in/out
       mascot.position.lerpVectors(flightFrom, dest, ease);
-      if (p >= 1) mascotFlying = false;        // arrived: hand off to steady orbit/bob
+      if (p >= 1) {                            // arrived: hand off to steady orbit
+        mascotFlying = false;
+        if (mascotArrivalCb) { const cb = mascotArrivalCb; mascotArrivalCb = null; cb(); }
+      }
     } else {
       mascot.position.copy(dest);
     }
