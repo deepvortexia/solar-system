@@ -25,21 +25,23 @@ scene.background = new THREE.Color(0x02030a);
 // atmospheric fog: outer planets fade into the void for a sense of vast depth.
 // Matches the background so it blends; the star shader ignores fog, so the
 // starfield stays crisp as a distant backdrop behind the receding planets.
-scene.fog = new THREE.Fog(0x02030a, 90, 520);
+// near scaled with the 3x layout so the inner system stays crisp; far reaches Neptune (~354)
+scene.fog = new THREE.Fog(0x02030a, 270, 1200);
 
 const camera = new THREE.PerspectiveCamera(
-  38, window.innerWidth / window.innerHeight, 0.1, 2000); // narrow FOV = telephoto depth
+  38, window.innerWidth / window.innerHeight, 0.1, 4000); // narrow FOV = telephoto depth
 // portrait screens need a wider pull-back so the horizontally-spread system fits
 const fit = THREE.MathUtils.clamp(window.innerHeight / window.innerWidth, 1, 1.9);
-// closer + lower angle: look across the system (not down at it) so it reads vast, not flat
-camera.position.set(30, 16, 46).multiplyScalar(fit);
+// closer + lower angle: look across the system (not down at it) so it reads vast, not flat.
+// scaled ~3x with the orbital layout so the framing ratio matches the larger system
+camera.position.set(90, 48, 138).multiplyScalar(fit);
 const HOME_POS = camera.position.clone();
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.minDistance = 2;
-controls.maxDistance = isSmallScreen ? 300 : 450;
+controls.maxDistance = isSmallScreen ? 900 : 1200;
 if (isCoarsePointer) {
   controls.enablePan = false; // two-finger pan strands touch users in empty space
   document.getElementById('hint').textContent =
@@ -232,6 +234,7 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
 
   const sun = root.getObjectByName('Sun');
   if (sun) {
+    sun.scale.multiplyScalar(1.5); // bigger anchor for the vast layout; the halo (a child) scales with it
     spinners.push({ mesh: sun, speed: 0.02 });
     clickable.push(sun);
     // depth-tested sprite: the sun sphere covers its center, planets occlude it
@@ -250,18 +253,60 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   const SPIN_BASE = 0.35;  // rad/s for a 24-hour day
 
   // override the orbital radii authored in the GLTF (planets sit on +X from the
-  // origin) to spread the system out, especially the bunched-up inner planets
+  // origin) to spread the system out. 3x baseline for a vast layout, then adjusted
+  // outward at runtime so no two neighbours overlap given their real visual sizes.
   const ORBIT_RADII = {
-    Mercury: 14, Venus: 20, Earth: 28, Mars: 38,
-    Jupiter: 55, Saturn: 78, Uranus: 100, Neptune: 118,
+    Mercury: 42, Venus: 60, Earth: 84, Mars: 114,
+    Jupiter: 165, Saturn: 234, Uranus: 300, Neptune: 354,
   };
+  const ORDER = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 
-  for (const [name, orbit] of Object.entries(ORBITS)) {
+  // pre-pass: apply the mobile visible-scale boost first, then measure each planet's
+  // TRUE visual radius (boundingSphere * world scale) so spacing accounts for size
+  const layout = [];
+  for (const name of ORDER) {
     const planet = root.getObjectByName(name);
     if (!planet) continue;
+    // visible-scale boost: rocky planets are only a few px wide on phones; boost
+    // before measuring so their measured radius reflects what's actually drawn
+    if (isSmallScreen && ['Mercury', 'Venus', 'Earth', 'Mars'].includes(name)) {
+      planet.scale.multiplyScalar(1.5);
+    }
+    layout.push({ name, planet, orbit: ORBITS[name], radius: ORBIT_RADII[name] });
+  }
+  root.updateMatrixWorld(true); // refresh world matrices before measuring
+  for (const e of layout) {
+    if (!e.planet.geometry.boundingSphere) e.planet.geometry.computeBoundingSphere();
+    const ws = e.planet.getWorldScale(new THREE.Vector3());
+    e.visR = e.planet.geometry.boundingSphere.radius * Math.max(ws.x, ws.y, ws.z);
+    // Saturn's rings extend well past the planet sphere — measure them too
+    if (e.name === 'Saturn') {
+      const rings = root.getObjectByName('SaturnRings');
+      if (rings) {
+        if (!rings.geometry.boundingSphere) rings.geometry.computeBoundingSphere();
+        const rws = rings.getWorldScale(new THREE.Vector3());
+        e.visR = Math.max(e.visR, rings.geometry.boundingSphere.radius * Math.max(rws.x, rws.y, rws.z));
+      }
+    }
+  }
 
-    // push the planet to its new radius before attaching, so the pivot captures it
-    if (ORBIT_RADII[name] !== undefined) planet.position.x = ORBIT_RADII[name];
+  // size-aware spacing: walk outward; if a neighbour pair is too tight for their
+  // combined visual radii, push the outer planet (and everything beyond it) out by
+  // the shortfall, preserving the relative spacing of the planets further out
+  for (let i = 1; i < layout.length; i++) {
+    const prev = layout[i - 1], cur = layout[i];
+    const margin = (prev.name === 'Jupiter' && cur.name === 'Saturn') ? 15 : 10;
+    const minGap = prev.visR + cur.visR + margin;
+    const shortfall = minGap - (cur.radius - prev.radius);
+    if (shortfall > 0) {
+      for (let j = i; j < layout.length; j++) layout[j].radius += shortfall;
+    }
+  }
+
+  // place each planet on its (possibly-adjusted) orbit and wire up motion/clicks
+  for (const e of layout) {
+    const { name, planet, orbit } = e;
+    planet.position.x = e.radius; // pushed out before attaching so the pivot captures it
 
     const pivot = new THREE.Group();
     root.add(pivot);
@@ -273,17 +318,16 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
     spinners.push({ mesh: planet, speed: SPIN_BASE / orbit.day });
     clickable.push(planet);
 
-    // visible-scale boost: the rocky planets are only a few px wide on phones,
-    // making them invisible and untappable at the default zoom
-    if (isSmallScreen && ['Mercury', 'Venus', 'Earth', 'Mars'].includes(name)) {
-      planet.scale.multiplyScalar(1.5);
-    }
-
     if (name === 'Saturn') {
       const rings = root.getObjectByName('SaturnRings');
       if (rings) clickable.push(rings);
     }
   }
+
+  // surface the final computed layout (radii may exceed the 3x baseline where
+  // measured sizes forced extra spacing) for inspection in the browser console
+  console.log('[layout] final orbital radii:',
+    layout.map((e) => `${e.name} ${e.radius.toFixed(1)} (visR ${e.visR.toFixed(2)})`).join(' | '));
 
   for (const obj of clickable) {
     if (obj.name !== 'Sun') selfIlluminate(obj);
@@ -310,7 +354,7 @@ let halo = null;            // thin energy ring above Terra's head — pulses/br
 const haloWaves = [];       // [{ mesh, phase }] — ripples emanating from the halo in flight
 const HALO_WAVE_CYCLE = 1.2; // seconds for a wave to expand + fade out
 let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
-const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
+const MASCOT_Y = 19.5;      // above the now-1.5x Sun surface (r~7.5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
 const MASCOT_HOME = new THREE.Vector3(0, MASCOT_Y, 0);
 
@@ -325,12 +369,14 @@ let mascotOrbitRadius = 0;  // distance from the planet centre to circle at
 let mascotFlying = false;   // true during the 2s transit (boost the flames)
 let mascotArrivalCb = null; // called once when a flight to a planet completes
 let flightStart = 0;        // clock time the current flight began
-const FLIGHT_TIME = 2;      // seconds
+let flightDuration = 2;     // seconds — recomputed per-flight from travel distance
 const flightFrom = new THREE.Vector3();
 const _planetWorld = new THREE.Vector3();
 const _mascotDest = new THREE.Vector3();
 const _lightDir = new THREE.Vector3(); // mascot -> camera, for the follow light
 const _flyDir = new THREE.Vector3();   // mascot -> destination, for flight heading
+const flightCamOffset = new THREE.Vector3(); // camera->Terra offset held during flight
+const _camDesired = new THREE.Vector3();     // scratch for the follow-camera target
 
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
@@ -474,6 +520,14 @@ function startMascotFlight() {
   flightFrom.copy(mascot.position);
   flightStart = clock.elapsedTime;
   mascotFlying = true;
+  // distance-based duration: crossing the now-vast system should take proportionally
+  // longer (distance / 8, clamped to a 3-15s cinematic range)
+  let dist;
+  if (mascotTarget) { mascotTarget.getWorldPosition(_planetWorld); dist = flightFrom.distanceTo(_planetWorld); }
+  else dist = flightFrom.distanceTo(MASCOT_HOME);
+  flightDuration = THREE.MathUtils.clamp(dist / 8, 3, 15);
+  // remember the current camera->Terra offset so the camera can track her in flight
+  flightCamOffset.subVectors(camera.position, flightFrom);
 }
 
 // where the mascot wants to be this frame: orbiting the live (still-moving)
@@ -690,7 +744,7 @@ function animate() {
     const t = clock.elapsedTime;
     const dest = mascotDestination(t); // live target: orbit point or home, with bob
     const fe = t - flightStart;        // seconds elapsed into the current flight
-    const p = THREE.MathUtils.clamp(fe / FLIGHT_TIME, 0, 1); // flight progress 0..1
+    const p = THREE.MathUtils.clamp(fe / flightDuration, 0, 1); // flight progress 0..1
     if (mascotFlying) {
       const ease = p * p * (3 - 2 * p);        // smoothstep ease in/out
       mascot.position.lerpVectors(flightFrom, dest, ease);
@@ -818,6 +872,16 @@ function animate() {
   if (followTarget) {
     followTarget.getWorldPosition(targetPos);
     controls.target.lerp(targetPos, 0.06);
+  }
+
+  // camera follow: during flight, gently glide to hold the captured offset from
+  // Terra so long crossings track her instead of watching a dot crawl across a vast
+  // static view. Released on arrival (OrbitControls resumes). Skipped while resetting,
+  // which owns the camera and returns it home.
+  if (mascot && mascotFlying && !resetting) {
+    _camDesired.addVectors(mascot.position, flightCamOffset);
+    camera.position.lerp(_camDesired, 0.05);
+    controls.target.lerp(mascot.position, 0.05);
   }
 
   controls.update();
