@@ -237,6 +237,35 @@ new GLTFLoader().load('/solar-system.gltf', (gltf) => {
   document.querySelector('#loading p').textContent = 'Failed to load scene: ' + err.message;
 });
 
+// ---------- mascot ----------
+// Earth-headed astronaut, floating above the Sun near the centre of the system.
+let mascot = null;          // a pivot group; bobbed/swayed in the render loop
+const MASCOT_Y = 13;        // above the Sun surface (r=5) and the orbital plane
+const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
+
+new GLTFLoader().load('/mascot.gltf', (gltf) => {
+  const model = gltf.scene;
+
+  // normalise to a fixed height and re-centre on its own origin, regardless of
+  // how the Blender export happened to be positioned/scaled
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const s = MASCOT_HEIGHT / size.y;
+  model.scale.setScalar(s);
+  model.position.set(-center.x * s, -center.y * s, -center.z * s);
+
+  // emissive flames/halo/buttons already carry emission from the glTF; make sure
+  // they aren't dimmed and that nothing writes itself into the click targets
+  const pivot = new THREE.Group();
+  pivot.add(model);
+  pivot.position.set(0, MASCOT_Y, 0);
+  scene.add(pivot);
+  mascot = pivot;
+}, undefined, (err) => {
+  console.error('Mascot failed to load:', err); // non-fatal: the system still renders
+});
+
 // ---------- picking ----------
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -374,6 +403,12 @@ function animate() {
 
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
+
+  if (mascot) {
+    const t = clock.elapsedTime;
+    mascot.position.y = MASCOT_Y + Math.sin(t * 1.1) * 0.6; // gentle bob
+    mascot.rotation.y = Math.sin(t * 0.4) * 0.4;            // sway, keeps the face toward you
+  }
 
   for (const { sprite, body, offset } of labels) {
     body.getWorldPosition(sprite.position);
