@@ -955,6 +955,12 @@ function animate() {
   // static view. Released on arrival (OrbitControls resumes). Skipped while resetting,
   // which owns the camera and returns it home.
   if (mascot && mascotFlying && !resetting) {
+    // keep scroll-wheel zoom live during the flight: refresh the held offset's
+    // *length* to the user's current camera->Terra distance (controls.update()
+    // applied their dolly last frame) while its *direction* still drives the
+    // follow glide. Without this the fixed-length offset reverts every zoom.
+    const curDist = camera.position.distanceTo(mascot.position);
+    if (curDist > 1e-4) flightCamOffset.setLength(curDist);
     _camDesired.addVectors(mascot.position, flightCamOffset);
     camera.position.lerp(_camDesired, 0.05);
     controls.target.lerp(mascot.position, 0.05);
