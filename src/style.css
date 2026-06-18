@@ -231,6 +231,76 @@ canvas {
   color: #e3d9c4;
 }
 
+/* surface-dive ("Visiting Earth") view: fade the solar-system overlay out while
+   the camera is on Earth's surface. Reuses the opacity-transition pattern. */
+body.surface-mode #hint,
+body.surface-mode #reset-view,
+body.surface-mode #planet-badge,
+body.surface-mode #info-panel {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+/* "Visiting Earth" panel — same open/opacity pattern as #info-panel, centred at
+   the bottom so Earth's surface fills the screen behind it */
+#surface-panel {
+  position: fixed;
+  left: 50%;
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(16px);
+  width: min(420px, 92vw);
+  padding: 22px 26px;
+  text-align: center;
+  background: rgba(8, 12, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease;
+  z-index: 16;
+}
+
+#surface-panel.open {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#surface-panel h2 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  background: linear-gradient(90deg, #9fd0ff, #6ea8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#surface-panel p {
+  font-size: 14px;
+  color: #8d99b8;
+  margin-bottom: 16px;
+}
+
+#surface-return {
+  padding: 10px 22px;
+  border: 1px solid rgba(159, 208, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(110, 168, 255, 0.12);
+  color: #e8ecf5;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+#surface-return:hover {
+  background: rgba(110, 168, 255, 0.24);
+  border-color: rgba(159, 208, 255, 0.7);
+}
+
 @media (max-width: 600px) {
   #hint {
     font-size: 11px;

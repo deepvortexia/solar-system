@@ -401,6 +401,33 @@ const arrivalTargetFrom = new THREE.Vector3();
 const arrivalTargetTo = new THREE.Vector3();
 const _arrivalDir = new THREE.Vector3();
 
+// surface "dive": a second one-shot leg that fires only for Earth, chained AFTER
+// the arrival punch-in finishes. It continues the camera in past the orbit framing
+// until Earth's surface fills the screen ("landing/visit" view), fades out the
+// solar-system overlay, then hands back to OrbitControls with tightened limits so
+// the user can look around close. Modelled on the arrival state; gated by SURFACE_BODIES.
+const SURFACE_BODIES = new Set(['Earth']); // bodies that support a surface dive (extensible)
+let diving = false;
+let diveStart = 0;
+const DIVE_TIME = 2.5;                         // seconds, ease-out (a touch slower than arrival)
+// stored as offsets from Earth's CENTRE (not absolute world points) so the dive
+// tracks Earth's live position every frame — Earth orbits ~50 units during the 2.5s
+// descent, and a static endpoint would strand the camera out in empty space.
+const diveCamFromOffset = new THREE.Vector3();   // camera offset from centre at dive start
+const diveCamToOffset = new THREE.Vector3();     // camera offset from centre at the surface
+const diveTargetFromOffset = new THREE.Vector3(); // look-at offset from centre at start (->0 at end)
+const _diveDir = new THREE.Vector3();
+const _diveScratch = new THREE.Vector3();
+let worldUiOpacity = 1; // global multiplier on the 3D labels; lerps 0 in surface mode
+// FOV is widened during the dive/surface view to exaggerate the looming-planet feel,
+// then eased back to normal on return to space.
+const BASE_FOV = camera.fov;
+const DIVE_FOV = BASE_FOV + 18;
+const MASCOT_SURFACE_SCALE = 0.3; // shrink Terra so she reads small against the giant Earth
+// OrbitControls distance caps captured on dive so they can be restored on return
+let savedMinDistance = 0;
+let savedMaxDistance = 0;
+
 new GLTFLoader().load('/mascot.gltf', (gltf) => {
   const model = gltf.scene;
 
@@ -580,6 +607,70 @@ function startArrivalZoom() {
   arrivalZooming = true;
 }
 
+// fire the one-shot surface dive (Earth only): continue the camera in from the
+// arrival framing until Earth's surface fills the screen. Aimed at Earth's centre
+// and stopped just above the surface (radius * 1.08) so the sphere fills the frame.
+function startSurfaceDive() {
+  if (!mascot || !mascotTarget) return;
+  mascotTarget.getWorldPosition(_planetWorld); // Earth's live centre at dive start
+  let pr = 1;
+  if (mascotTarget.isMesh) {
+    if (!mascotTarget.geometry.boundingSphere) mascotTarget.geometry.computeBoundingSphere();
+    const sc = mascotTarget.getWorldScale(new THREE.Vector3());
+    pr = mascotTarget.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z);
+  }
+  const dist = pr * 1.08; // just above the surface: the sphere fills the view
+  // keep the current viewing direction (continue the arrival approach, no flip),
+  // measured from Earth's live centre this frame
+  _diveDir.subVectors(camera.position, _planetWorld);
+  if (_diveDir.lengthSq() < 1e-6) _diveDir.copy(OVERVIEW_DIR); // degenerate fallback
+  _diveDir.normalize();
+  // capture endpoints as offsets from Earth's centre so they translate with Earth
+  diveCamToOffset.copy(_diveDir).multiplyScalar(dist);
+  diveCamFromOffset.subVectors(camera.position, _planetWorld);
+  diveTargetFromOffset.subVectors(controls.target, _planetWorld); // eases to (0,0,0) = centre
+  diveStart = clock.elapsedTime;
+  diving = true;
+  controls.enabled = false; // the dive owns the camera; re-enabled in enterSurfaceMode after the caps tighten
+  // start fading the solar-system overlay (DOM controls + 3D labels) as we descend;
+  // the "Visiting Earth" panel fades in once we land (enterSurfaceMode)
+  document.body.classList.add('surface-mode');
+}
+
+// landed: fade in the "Visiting Earth" panel and hand control back to OrbitControls,
+// but tighten its distance caps so the user can look around close without flying
+// back out to system-overview distances.
+function enterSurfaceMode() {
+  diving = false;
+  let pr = 1;
+  if (mascotTarget && mascotTarget.isMesh) {
+    if (!mascotTarget.geometry.boundingSphere) mascotTarget.geometry.computeBoundingSphere();
+    const sc = mascotTarget.getWorldScale(new THREE.Vector3());
+    pr = mascotTarget.geometry.boundingSphere.radius * Math.max(sc.x, sc.y, sc.z);
+  }
+  savedMinDistance = controls.minDistance;
+  savedMaxDistance = controls.maxDistance;
+  controls.minDistance = pr * 1.02;  // can't clip through the surface
+  controls.maxDistance = pr * 2.5;   // can't drift back out to orbit/overview range
+  controls.enabled = true;           // hand control back now that the caps are tight (no snap-back)
+  document.body.classList.add('surface-mode'); // fades the solar-system overlay (CSS)
+  surfacePanel.classList.add('open');
+}
+
+// "Return to space": restore the caps + overlay, then reuse the existing overview
+// pull-back. Safe to call when not in surface mode (the resets are idempotent).
+function exitSurfaceMode() {
+  if (savedMaxDistance) {
+    controls.minDistance = savedMinDistance;
+    controls.maxDistance = savedMaxDistance;
+    savedMinDistance = savedMaxDistance = 0;
+  }
+  document.body.classList.remove('surface-mode');
+  surfacePanel.classList.remove('open');
+  diving = false;
+  resetView(); // v1: straight back to the system overview
+}
+
 // where the mascot wants to be this frame: orbiting the live (still-moving)
 // target, or bobbing at its home spot above the Sun
 function mascotDestination(t) {
@@ -604,6 +695,7 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const tooltip = document.getElementById('tooltip');
 const panel = document.getElementById('info-panel');
+const surfacePanel = document.getElementById('surface-panel');
 let followTarget = null;
 
 const screenPos = new THREE.Vector3();
@@ -716,6 +808,7 @@ function showArrival(name) {
 let downAt = null;
 let lastEmptyTap = { t: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (diving) return;     // the surface dive is uninterruptible — only "Return to space" exits
   downAt = { x: e.clientX, y: e.clientY };
   resetting = false;      // user grabbed the view mid-reset
   arrivalZooming = false; // ...or mid arrival punch-in — hand them control immediately
@@ -769,6 +862,9 @@ document.getElementById('close-panel').addEventListener('click', () => {
 });
 
 document.getElementById('reset-view').addEventListener('click', resetView);
+
+// "Return to space" leaves the surface view and pulls back to the system overview
+document.getElementById('surface-return').addEventListener('click', exitSurfaceMode);
 
 // swipe down dismisses the bottom-sheet info panel on phones
 let sheetTouch = null;
@@ -923,14 +1019,20 @@ function animate() {
       mouth.mesh.position.copy(mouth.originalPosition);
       mouth.mesh.rotation.z = THREE.MathUtils.lerp(mouth.mesh.rotation.z, mouth.baseZ + mouth.target, 0.1);
     }
+
+    // surface mode: shrink Terra so she reads as a tiny astronaut against the giant
+    // Earth instead of floating at near-equal size; eased back to full size on return
+    const targetMascotScale = document.body.classList.contains('surface-mode') ? MASCOT_SURFACE_SCALE : 1;
+    mascot.scale.setScalar(THREE.MathUtils.lerp(mascot.scale.x, targetMascotScale, 0.08));
   }
 
   for (const { sprite, body, offset } of labels) {
     body.getWorldPosition(sprite.position);
     sprite.position.y += offset;
-    // fade distant labels so small screens aren't wallpapered in text
+    // fade distant labels so small screens aren't wallpapered in text, then scale
+    // by worldUiOpacity so every label fades out together in the surface-dive view
     const d = sprite.position.distanceTo(camera.position);
-    sprite.material.opacity = THREE.MathUtils.clamp(1.25 - d / 400, 0.35, 1);
+    sprite.material.opacity = THREE.MathUtils.clamp(1.25 - d / 400, 0.35, 1) * worldUiOpacity;
   }
 
   if (resetting) {
@@ -943,9 +1045,9 @@ function animate() {
     }
   }
 
-  // arrival punch-in owns the camera while it runs, so don't let followTarget tug
-  // the look-at toward the planet mid-zoom
-  if (followTarget && !arrivalZooming) {
+  // arrival punch-in / surface dive own the camera while they run, so don't let
+  // followTarget tug the look-at toward the planet mid-animation
+  if (followTarget && !arrivalZooming && !diving) {
     followTarget.getWorldPosition(targetPos);
     controls.target.lerp(targetPos, 0.06);
   }
@@ -974,7 +1076,37 @@ function animate() {
     const e = 1 - Math.pow(1 - k, 3); // cubic ease-out
     camera.position.lerpVectors(arrivalCamFrom, arrivalCamTo, e);
     controls.target.lerpVectors(arrivalTargetFrom, arrivalTargetTo, e);
-    if (k >= 1) arrivalZooming = false;
+    if (k >= 1) {
+      arrivalZooming = false;
+      // Earth only: chain straight into the surface dive as the second leg
+      if (mascotTarget && SURFACE_BODIES.has(mascotTarget.name)) startSurfaceDive();
+    }
+  }
+
+  // surface dive: the one-shot second leg (Earth only). Continues the camera in
+  // from the arrival framing onto Earth's surface, then enterSurfaceMode() hands
+  // back to OrbitControls with tightened caps. Yielded if a reset takes over.
+  if (diving && !resetting) {
+    const k = THREE.MathUtils.clamp((clock.elapsedTime - diveStart) / DIVE_TIME, 0, 1);
+    const e = 1 - Math.pow(1 - k, 3); // cubic ease-out
+    mascotTarget.getWorldPosition(_planetWorld); // Earth's LIVE centre this frame
+    // camera = liveCentre + lerp(startOffset, surfaceOffset); offsets translate with Earth
+    camera.position.copy(_planetWorld).add(_diveScratch.lerpVectors(diveCamFromOffset, diveCamToOffset, e));
+    // look-at eases from its start offset onto Earth's centre
+    controls.target.copy(_planetWorld).addScaledVector(diveTargetFromOffset, 1 - e);
+    if (k >= 1) enterSurfaceMode();
+  }
+
+  // fade the 3D labels out in surface mode (1->0) and back in otherwise; applied
+  // as a global multiplier at the label-opacity chokepoint below
+  const inSurface = document.body.classList.contains('surface-mode');
+  worldUiOpacity = THREE.MathUtils.lerp(worldUiOpacity, inSurface ? 0 : 1, 0.08);
+
+  // widen the FOV during the dive/surface view, ease it back on return to space
+  const targetFov = (diving || inSurface) ? DIVE_FOV : BASE_FOV;
+  if (Math.abs(camera.fov - targetFov) > 0.02) {
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.08);
+    camera.updateProjectionMatrix();
   }
 
   controls.update();
