@@ -364,6 +364,34 @@ const arms = [];            // { mesh, baseZ, phase, bigStart, nextBig } — idl
 let halo = null;            // thin energy ring above Terra's head — pulses/breathes
 const haloWaves = [];       // [{ mesh, phase }] — ripples emanating from the halo in flight
 const HALO_WAVE_CYCLE = 1.2; // seconds for a wave to expand + fade out
+
+// Build a pulsing energy halo ring + a set of expanding "wave" rings above a
+// character's head. Colour-parameterized so each mascot gets its own aura (Terra
+// cyan, Rosalys rose-pink/violet) from one shared construction. Returns the halo
+// mesh and the wave list so the caller animates them however it likes.
+function makeAura(pivot, yOffset, haloColor, waveColor, waveCount = 3) {
+  const geo = new THREE.RingGeometry(1.2, 1.6, 64);
+  const halo = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: haloColor, emissive: haloColor, emissiveIntensity: 1.5,
+    side: THREE.DoubleSide, transparent: true, opacity: 0.9, fog: false,
+  }));
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = yOffset;
+  pivot.add(halo);
+  const waves = [];
+  for (let i = 0; i < waveCount; i++) {
+    const wave = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: waveColor, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, fog: false,
+    }));
+    wave.rotation.x = Math.PI / 2;        // horizontal, matching the halo
+    wave.position.y = yOffset;            // emanate from the halo's height
+    wave.visible = false;                 // shown by the caller's animation
+    pivot.add(wave);
+    waves.push({ mesh: wave, phase: (i / waveCount) * HALO_WAVE_CYCLE });
+  }
+  return { halo, waves };
+}
 let mouth = null;           // { mesh, originalPosition, baseZ, target, nextExpr }
 const MASCOT_Y = 19.5;      // above the now-1.5x Sun surface (r~7.5) and the orbital plane
 const MASCOT_HEIGHT = 6;    // normalised world height — small against the system
@@ -507,34 +535,11 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   scene.add(pivot);
   mascot = pivot;
 
-  // pulsing energy halo: a thin cyan ring laid flat above Terra's head. Parented
-  // to the pivot so it travels with her; intensity + scale breathe in the loop.
-  const haloMesh = new THREE.Mesh(
-    new THREE.RingGeometry(1.2, 1.6, 64),
-    new THREE.MeshStandardMaterial({ color: 0x00cfff, emissive: 0x00cfff, emissiveIntensity: 1.5, side: THREE.DoubleSide, transparent: true, opacity: 0.9, fog: false })
-  );
-  haloMesh.rotation.x = Math.PI / 2;
-  haloMesh.position.y = MASCOT_HEIGHT / 2 + 0.5; // just above the head, not floating high
-  pivot.add(haloMesh);
-  halo = haloMesh;
-
-  // energy waves: ripples that expand + fade out of the halo while Terra flies.
-  // Three rings sharing the halo's geometry, staggered evenly across the cycle so
-  // they pulse outward continuously. Additive cyan for a glowing-energy look.
-  for (let i = 0; i < 3; i++) {
-    const wave = new THREE.Mesh(
-      haloMesh.geometry, // same radius/shape as the halo
-      new THREE.MeshBasicMaterial({
-        color: 0x00cfff, transparent: true, opacity: 0,
-        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false, fog: false,
-      }),
-    );
-    wave.rotation.x = Math.PI / 2;          // horizontal, matching the halo
-    wave.position.y = haloMesh.position.y;   // emanate from the halo's height
-    wave.visible = false;                    // only shown during flight
-    pivot.add(wave);
-    haloWaves.push({ mesh: wave, phase: (i / 3) * HALO_WAVE_CYCLE }); // 0, 0.4, 0.8s
-  }
+  // pulsing energy halo + flight ripple waves, just above Terra's head. Cyan, via
+  // the shared makeAura helper (same colour/values as before); animated in the loop.
+  const aura = makeAura(pivot, MASCOT_HEIGHT / 2 + 0.5, 0x00cfff, 0x00cfff);
+  halo = aura.halo;
+  haloWaves.push(...aura.waves);
 
   // floating name label, same sprite/canvas system as the planets. The model is
   // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
@@ -542,6 +547,112 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
+
+// ---------- Rosalys (decorative idle companion) ----------
+// Fully self-contained: her own state, loader, and idle animation. Deliberately
+// does NOT touch Terra's mascot/flight/dive code — the selectable-flight system
+// that lets either character fly to planets is a later, separate step. For now she
+// just floats beside Terra's home, bobbing + flapping + blinking with a pink aura.
+let rosalys = null;                 // pivot group
+const rosalysEyes = [];             // { mesh, baseY, blinkStart, nextBlink }
+const rosalysWings = [];            // { node, sign, baseY } — flap pivots (WingL/WingR)
+let rosalysHalo = null;             // pink halo ring (pulses)
+const rosalysWaves = [];            // [{ mesh, phase }] — gentle continuous ripple
+// floats to one side of Terra's home, slightly lower/forward so both read clearly
+const ROSALYS_HOME = new THREE.Vector3(MASCOT_HOME.x - 9, MASCOT_HOME.y - 1.5, MASCOT_HOME.z + 2);
+
+new GLTFLoader().load('/rosalys.gltf', (gltf) => {
+  const model = gltf.scene;
+
+  // normalise to the same on-screen height as Terra, re-centred on her own origin
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const s = MASCOT_HEIGHT / size.y;
+  model.scale.setScalar(s);
+  model.position.set(-center.x * s, -center.y * s, -center.z * s);
+
+  model.traverse((c) => {
+    // wing flap pivots are empty groups named exactly WingL / WingR
+    if (!c.isMesh && (c.name === 'WingL' || c.name === 'WingR')) {
+      rosalysWings.push({ node: c, sign: c.name === 'WingL' ? -1 : 1, baseY: c.rotation.y });
+      return;
+    }
+    if (!c.isMesh) return;
+    // translucent, double-sided wing lobes (enforced here so it doesn't depend on
+    // how the glTF exporter wrote alpha); veins stay opaque + emissive for contrast
+    if (c.name.startsWith('Wing') && !/Vein/.test(c.name)) {
+      c.material.transparent = true;
+      c.material.opacity = 0.5;
+      c.material.depthWrite = false;
+      c.material.side = THREE.DoubleSide;
+    }
+    // eyes blink independently, same scheme as Terra's
+    if (c.name === 'EyeL' || c.name === 'EyeR') {
+      rosalysEyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, nextBlink: 1 + Math.random() * 4 });
+    }
+  });
+
+  const pivot = new THREE.Group();
+  pivot.add(model);
+  pivot.position.copy(ROSALYS_HOME);
+  scene.add(pivot);
+  rosalys = pivot;
+
+  // rose-pink / violet aura via the same shared helper Terra uses (different colours)
+  const aura = makeAura(pivot, MASCOT_HEIGHT / 2 + 0.5, 0xff5cc8, 0xc05cff);
+  rosalysHalo = aura.halo;
+  rosalysWaves.push(...aura.waves);
+
+  addLabel(rosalys, 'Rosalys', MASCOT_HEIGHT / 2 + 1.3, 1.3);
+}, undefined, (err) => {
+  console.error('Rosalys failed to load:', err); // non-fatal
+});
+
+// Rosalys idle: gentle bob + sway, face the camera, flap her wings, blink, and let
+// her aura shimmer. Driven once per frame from the render loop; isolated from Terra.
+function animateRosalysIdle(t) {
+  if (!rosalys) return;
+  rosalys.position.y = ROSALYS_HOME.y + Math.sin(t * 1.0) * 0.5;     // bob
+  rosalys.rotation.z = Math.sin(t * 0.7) * 0.05;                     // sway
+  rosalys.rotation.y = Math.atan2(camera.position.x - rosalys.position.x,
+                                  camera.position.z - rosalys.position.z); // face camera
+
+  // wings: gentle up/down flap, mirrored per side
+  for (const w of rosalysWings) {
+    w.node.rotation.y = w.baseY + w.sign * Math.sin(t * 5.0) * 0.18;
+  }
+
+  // eyes: independent blinks (same timing as Terra)
+  for (const eye of rosalysEyes) {
+    if (t >= eye.nextBlink) {
+      eye.blinkStart = t;
+      eye.nextBlink = t + 2 + Math.random() * 4;
+    }
+    const bt = t - eye.blinkStart;
+    let k = 1;
+    if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);
+    else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);
+    eye.mesh.scale.y = eye.baseY * k;
+  }
+
+  // halo: pulse intensity + breathe scale, like Terra's idle halo
+  if (rosalysHalo) {
+    rosalysHalo.material.emissiveIntensity = 0.8 + 0.85 * (0.5 + 0.5 * Math.sin(t * 1.8));
+    const hs = 0.95 + 0.05 * Math.sin(t * 1.2);
+    rosalysHalo.scale.set(hs, hs, hs);
+  }
+
+  // aura waves: a soft continuous ripple so her pink-violet aura reads while idle
+  // (Terra's only ripple in flight; Rosalys has no flight yet, so show it gently)
+  for (const wave of rosalysWaves) {
+    wave.mesh.visible = true;
+    const k = ((t + wave.phase) % HALO_WAVE_CYCLE) / HALO_WAVE_CYCLE;
+    const ws = 1.0 + 1.75 * k;
+    wave.mesh.scale.set(ws, ws, ws);
+    wave.mesh.material.opacity = 0.4 * (1 - k);
+  }
+}
 
 // send the mascot off to orbit a clicked planet, just clear of its surface
 function flyMascotTo(planet, onArrival = null) {
@@ -1025,6 +1136,8 @@ function animate() {
     const targetMascotScale = document.body.classList.contains('surface-mode') ? MASCOT_SURFACE_SCALE : 1;
     mascot.scale.setScalar(THREE.MathUtils.lerp(mascot.scale.x, targetMascotScale, 0.08));
   }
+
+  animateRosalysIdle(clock.elapsedTime); // decorative companion; isolated from Terra
 
   for (const { sprite, body, offset } of labels) {
     body.getWorldPosition(sprite.position);
