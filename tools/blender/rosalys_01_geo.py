@@ -9,7 +9,7 @@ R = math.radians
 
 # ---------------------------------------------------------------- materials
 # Name-cached Principled BSDF, mirroring mascot_02_geo.py's mat()/paint().
-def mat(name, col, rough=0.5, metal=0.0, emit=None, estr=4.0, alpha=1.0):
+def mat(name, col, rough=0.5, metal=0.0, emit=None, estr=0.6, alpha=1.0):
     m = bpy.data.materials.get(name)
     if m is not None:
         return m
@@ -27,9 +27,14 @@ def mat(name, col, rough=0.5, metal=0.0, emit=None, estr=4.0, alpha=1.0):
         if hasattr(m, "surface_render_method"):
             m.surface_render_method = 'BLENDED'
         m.use_backface_culling = False  # double-sided wings
-    if emit:
-        b.inputs["Emission Color"].default_value = hx(emit)
-        b.inputs["Emission Strength"].default_value = estr
+    # Always self-illuminate a little: when no emit is given it defaults to the
+    # base colour so every surface stays visible from any angle without relying
+    # on scene lights (FIX 2). Callers wanting a brighter/explicit glow still
+    # pass emit + estr (wings, rose, bracelets, sparkles, etc.).
+    if emit is None:
+        emit = col
+    b.inputs["Emission Color"].default_value = hx(emit)
+    b.inputs["Emission Strength"].default_value = estr
     return m
 
 def paint(obj, m):
@@ -105,15 +110,20 @@ for s in (-1, 1):
     tag = "L" if s < 0 else "R"
     # iris/pupil/glint share the eye-white's |x| (0.27) so both eyes look straight
     # forward (concentric), not wall-eyed; only the front-to-back depth (y) is stacked
-    white = sphere(f"Eye{tag}", 0.27, (0.27 * s, -0.40, 3.42), scale=(1.0, 0.72, 1.32))
+    white = sphere(f"Eye{tag}", 0.27, (0.27 * s, -0.40, 3.42), scale=(1.0, 0.45, 1.32))
     paint(white, mat("EyeWhite", "#FFFFFF", rough=0.2))
-    iris = sphere(f"Iris{tag}", 0.175, (0.27 * s, -0.52, 3.40), scale=(1.0, 0.82, 1.05))
+    iris = sphere(f"Iris{tag}", 0.175, (0.27 * s, -0.60, 3.40), scale=(1.0, 0.82, 1.05))
     paint(iris, mat("Iris", "#2E86F0", rough=0.25, emit="#2E86F0", estr=0.6))  # vivid blue
-    pupil = sphere(f"Pupil{tag}", 0.085, (0.27 * s, -0.61, 3.39), scale=(1.0, 0.85, 1.05))
+    pupil = sphere(f"Pupil{tag}", 0.085, (0.27 * s, -0.69, 3.39), scale=(1.0, 0.85, 1.05))
     paint(pupil, mat("Pupil", "#12131A", rough=0.2))
     # catchlight: concentric in x, raised in z for a natural upper highlight
-    glint = sphere(f"Glint{tag}", 0.05, (0.27 * s, -0.66, 3.50))
+    glint = sphere(f"Glint{tag}", 0.05, (0.27 * s, -0.74, 3.50))
     paint(glint, mat("Glint", "#FFFFFF", rough=0.1, emit="#FFFFFF", estr=1.6))
+    # flat anime-style eye outline ring laid into the face plane (faces -Y) and
+    # flattened in Y so it reads as a crisp dark lash-line around the sclera
+    outline = torus(f"EyeLine{tag}", 0.28, 0.03, (0.27 * s, -0.54, 3.42), rot=(R(90), 0, 0))
+    outline.scale = (1.0, 0.15, 1.0)
+    paint(outline, mat("EyeLine", "#0A0A10", rough=0.3, emit="#0A0A10", estr=0.8))
 
 # soft skin-toned nose bridge between/below the eyes (subtle, slim — not bulbous)
 nose = sphere("Nose", 0.05, (0, -0.55, 3.20), scale=(0.8, 0.8, 1.7))
@@ -143,18 +153,18 @@ paint(smile, mat("Mouth", "#C8607E", rough=0.4))
 
 # ============================================================ HAIR (cap + flowing locks + bangs)
 cap = sphere("HairCap", 0.68, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
-paint(cap, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.15))
+paint(cap, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
 # bangs: a couple of short tapered fringe shapes over the forehead
 for s in (-1, 1):
     bang = cone(f"Bang{s}", 0.22, 0.04, 0.55, (0.26 * s, -0.45, 3.62), rot=(R(s * 8), 0, 0))
     paint(bang, mat(*HAIR, rough=0.35))
 # long locks: tapered cones flowing down the back (+Y) and sides
 lock_specs = [
-    (-0.46, 0.30, 2.55, R(168), R(-10), 2.4),   # left side lock
-    ( 0.46, 0.30, 2.55, R(168), R( 10), 2.4),   # right side lock
-    (-0.22, 0.55, 2.45, R(172), 0,      2.8),   # back-left lock
-    ( 0.22, 0.55, 2.45, R(172), 0,      2.8),   # back-right lock
-    ( 0.00, 0.62, 2.40, R(176), 0,      3.0),   # centre-back lock (longest)
+    (-0.18, 0.30, 2.55, R(172), R(-10), 3.2),   # left side lock
+    ( 0.18, 0.30, 2.55, R(172), R( 10), 3.2),   # right side lock
+    (-0.18, 0.55, 2.45, R(172), 0,      3.2),   # back-left lock
+    ( 0.18, 0.55, 2.45, R(172), 0,      3.2),   # back-right lock
+    ( 0.00, 0.62, 2.40, R(172), 0,      3.2),   # centre-back lock
 ]
 for i, (x, y, z, rx, ry, length) in enumerate(lock_specs):
     lk = cone(f"Lock{i}", 0.20, 0.05, length, (x, y, z), rot=(rx, ry, 0))
@@ -241,19 +251,6 @@ def rib(name, lens_loc, lens_eul, length, yaw, color):
     paint(o, mat(name + "Mat", color, rough=0.2, emit=color, estr=4.0))
     return o
 
-def wing_rim(name, lens_loc, lens_eul, scl, color):
-    # thin glowing oval outline tracing the lens edge — a soft enchanted edge-glow.
-    # Named with "Vein" so the app keeps it emissive/opaque (it only translucent-ifies
-    # non-vein wing parts), so the rim reads as a crisp catch-light rather than washing out.
-    o = torus(name, 1.0, 0.02, (0, 0, 0))
-    base = mathutils.Euler(lens_eul, "XYZ").to_matrix()
-    tilt = mathutils.Matrix.Rotation(R(90), 3, "X")  # lay the ring into the lens plane
-    o.rotation_euler = (base @ tilt).to_euler()
-    o.location = lens_loc
-    o.scale = (scl[0] * 1.04, scl[2] * 1.04, 1.0)    # trace just outside the lens oval
-    paint(o, mat(name + "Mat", color, rough=0.1, emit=color, estr=6.0))
-    return o
-
 wing_pivots = []
 for s in (-1, 1):
     side = "L" if s < 0 else "R"
@@ -275,8 +272,7 @@ for s in (-1, 1):
         paint(lens, mat(f"{lname}Mat", wcol, rough=0.15, emit=wcol, estr=1.2, alpha=0.5))
         parts.append(lens)
         for j, y in enumerate(fan):
-            parts.append(rib(f"{lname}Vein{j}", loc, rot, scl[0] * 1.8, y, vcol))
-        parts.append(wing_rim(f"{lname}VeinRim", loc, rot, scl, vcol))
+            parts.append(rib(f"{lname}Vein{j}", loc, rot, scl[0] * 0.88, y, vcol))
     parent_keep(parts, pivot)
     wing_pivots.append(pivot.name)
 
