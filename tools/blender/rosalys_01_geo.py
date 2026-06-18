@@ -103,14 +103,16 @@ paint(neck, mat(*SKIN, rough=0.45))
 # clearly pokes in front of the white, a dark pupil, then a mirrored catchlight.
 for s in (-1, 1):
     tag = "L" if s < 0 else "R"
+    # iris/pupil/glint share the eye-white's |x| (0.27) so both eyes look straight
+    # forward (concentric), not wall-eyed; only the front-to-back depth (y) is stacked
     white = sphere(f"Eye{tag}", 0.27, (0.27 * s, -0.40, 3.42), scale=(1.0, 0.72, 1.32))
     paint(white, mat("EyeWhite", "#FFFFFF", rough=0.2))
-    iris = sphere(f"Iris{tag}", 0.175, (0.295 * s, -0.52, 3.40), scale=(1.0, 0.82, 1.05))
+    iris = sphere(f"Iris{tag}", 0.175, (0.27 * s, -0.52, 3.40), scale=(1.0, 0.82, 1.05))
     paint(iris, mat("Iris", "#2E86F0", rough=0.25, emit="#2E86F0", estr=0.6))  # vivid blue
-    pupil = sphere(f"Pupil{tag}", 0.085, (0.305 * s, -0.61, 3.39), scale=(1.0, 0.85, 1.05))
+    pupil = sphere(f"Pupil{tag}", 0.085, (0.27 * s, -0.61, 3.39), scale=(1.0, 0.85, 1.05))
     paint(pupil, mat("Pupil", "#12131A", rough=0.2))
-    # catchlight: precisely mirrored size/offset via the same sign-flip used elsewhere
-    glint = sphere(f"Glint{tag}", 0.05, (0.235 * s, -0.66, 3.50))
+    # catchlight: concentric in x, raised in z for a natural upper highlight
+    glint = sphere(f"Glint{tag}", 0.05, (0.27 * s, -0.66, 3.50))
     paint(glint, mat("Glint", "#FFFFFF", rough=0.1, emit="#FFFFFF", estr=1.6))
 
 # soft skin-toned nose bridge between/below the eyes (subtle, slim — not bulbous)
@@ -235,23 +237,37 @@ def rib(name, lens_loc, lens_eul, length, yaw, color):
     base = mathutils.Euler(lens_eul, "XYZ").to_matrix()
     extra = mathutils.Matrix.Rotation(yaw, 3, "Y")
     rot = (base @ extra).to_euler()
-    o = box(name, (length, 0.05, 0.05), lens_loc, rot=(rot.x, rot.y, rot.z))
+    o = box(name, (length, 0.038, 0.038), lens_loc, rot=(rot.x, rot.y, rot.z))
     paint(o, mat(name + "Mat", color, rough=0.2, emit=color, estr=4.0))
+    return o
+
+def wing_rim(name, lens_loc, lens_eul, scl, color):
+    # thin glowing oval outline tracing the lens edge — a soft enchanted edge-glow.
+    # Named with "Vein" so the app keeps it emissive/opaque (it only translucent-ifies
+    # non-vein wing parts), so the rim reads as a crisp catch-light rather than washing out.
+    o = torus(name, 1.0, 0.02, (0, 0, 0))
+    base = mathutils.Euler(lens_eul, "XYZ").to_matrix()
+    tilt = mathutils.Matrix.Rotation(R(90), 3, "X")  # lay the ring into the lens plane
+    o.rotation_euler = (base @ tilt).to_euler()
+    o.location = lens_loc
+    o.scale = (scl[0] * 1.04, scl[2] * 1.04, 1.0)    # trace just outside the lens oval
+    paint(o, mat(name + "Mat", color, rough=0.1, emit=color, estr=6.0))
     return o
 
 wing_pivots = []
 for s in (-1, 1):
     side = "L" if s < 0 else "R"
     wcol, vcol = WING_L if s < 0 else WING_R
-    fan = (R(-12), R(12)) if s < 0 else (R(-22), R(0), R(22))  # petal fan vs star points
+    # a fuller vein fan than before: petal-style (left) vs star-points (right)
+    fan = (R(-20), R(-7), R(7), R(20)) if s < 0 else (R(-26), R(-13), 0.0, R(13), R(26))
     bpy.ops.object.empty_add(type="PLAIN_AXES", location=(0, 0.33, 2.60))
     pivot = bpy.context.active_object
     pivot.name = f"Wing{side}"
     parts = []
-    # upper lobe (larger) + lower lobe (smaller)
+    # taller, slimmer lobes tilted further upward for a graceful dragonfly sweep
     lobes = [
-        (f"Wing{side}Up",  (s * 1.15, 0.34, 2.95), (0, R(s * -16), R(s * -10)), (1.55, 0.05, 0.95)),
-        (f"Wing{side}Lo",  (s * 0.98, 0.34, 2.20), (0, R(s * 14),  R(s * -6)),  (1.20, 0.05, 0.70)),
+        (f"Wing{side}Up",  (s * 1.15, 0.34, 3.10), (0, R(s * -28), R(s * -12)), (1.70, 0.05, 0.72)),
+        (f"Wing{side}Lo",  (s * 1.00, 0.34, 2.30), (0, R(s * -6),  R(s * -8)),  (1.45, 0.05, 0.62)),
     ]
     for lname, loc, rot, scl in lobes:
         lens = sphere(lname, 1.0, loc, scale=scl, seg=24, rings=12)
@@ -259,7 +275,8 @@ for s in (-1, 1):
         paint(lens, mat(f"{lname}Mat", wcol, rough=0.15, emit=wcol, estr=1.2, alpha=0.5))
         parts.append(lens)
         for j, y in enumerate(fan):
-            parts.append(rib(f"{lname}Vein{j}", loc, rot, scl[0] * 1.7, y, vcol))
+            parts.append(rib(f"{lname}Vein{j}", loc, rot, scl[0] * 1.8, y, vcol))
+        parts.append(wing_rim(f"{lname}VeinRim", loc, rot, scl, vcol))
     parent_keep(parts, pivot)
     wing_pivots.append(pivot.name)
 

@@ -6,10 +6,10 @@ bpy.context.window.scene = sc
 # target the camera looks at (mid-body)
 tgt = bpy.data.objects.get("RRenderTarget")
 if tgt is None:
-    bpy.ops.object.empty_add(location=(0, 0, 2.0))
+    bpy.ops.object.empty_add(location=(0, 0, 2.7))
     tgt = bpy.context.active_object
     tgt.name = "RRenderTarget"
-tgt.location = (0, 0, 2.0)
+tgt.location = (0, 0, 2.7)
 
 # camera in front (-Y)
 cam = bpy.data.objects.get("RRenderCam")
@@ -17,7 +17,7 @@ if cam is None:
     cd = bpy.data.cameras.new("RRenderCam")
     cam = bpy.data.objects.new("RRenderCam", cd)
     sc.collection.objects.link(cam)
-cam.location = (0.0, -13.0, 2.6)
+cam.location = (0.0, -9.0, 2.7)  # level, straight-on front view to judge eye direction
 con = cam.constraints.new("TRACK_TO") if not cam.constraints else cam.constraints[0]
 con.target = tgt
 con.track_axis = "TRACK_NEGATIVE_Z"
