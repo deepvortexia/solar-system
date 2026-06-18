@@ -557,6 +557,7 @@ let rosalys = null;                 // pivot group
 const rosalysEyes = [];             // { mesh, baseY, blinkStart, nextBlink }
 const rosalysWings = [];            // { node, sign, baseY } — flap pivots (WingL/WingR)
 let rosalysHalo = null;             // pink halo ring (pulses)
+let rosalysMouth = null;            // { mesh, baseY } — gentle smile pulse
 const rosalysWaves = [];            // [{ mesh, phase }] — gentle continuous ripple
 // floats to one side of Terra's home, slightly lower/forward so both read clearly
 const ROSALYS_HOME = new THREE.Vector3(MASCOT_HOME.x - 9, MASCOT_HOME.y - 1.5, MASCOT_HOME.z + 2);
@@ -590,6 +591,10 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
     // eyes blink independently, same scheme as Terra's
     if (c.name === 'EyeL' || c.name === 'EyeR') {
       rosalysEyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, nextBlink: 1 + Math.random() * 4 });
+    }
+    // mouth: keep a handle so her smile can gently pulse (mesh is the "Smile" node)
+    if (!rosalysMouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
+      rosalysMouth = { mesh: c, baseY: c.scale.y };
     }
   });
 
@@ -634,6 +639,11 @@ function animateRosalysIdle(t) {
     if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);
     else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);
     eye.mesh.scale.y = eye.baseY * k;
+  }
+
+  // mouth: subtle smile pulse (±5% Y scale, ~2s cycle) so she doesn't look frozen
+  if (rosalysMouth) {
+    rosalysMouth.mesh.scale.y = rosalysMouth.baseY * (1 + 0.05 * Math.sin(t * Math.PI));
   }
 
   // halo: pulse intensity + breathe scale, like Terra's idle halo

@@ -91,7 +91,7 @@ HAIR   = ("Hair",   "#E7C24E")   # golden-blonde
 HAIR2  = ("HairLit","#F6E08A")
 BODICE = ("Bodice", "#E24FA0")   # rose-pink gown top
 GOWN   = ("Gown",   "#B95AD0")   # rose-violet skirt
-ROSEC  = "#FF2D8A"               # hot-pink rose (emissive)
+ROSEC  = "#CC1111"               # vivid red rose (emissive)
 BRA    = "#FF6FD0"               # pink-violet bracelet glow
 SPK    = "#FFE3F6"              # sparkle
 
@@ -109,19 +109,21 @@ paint(neck, mat(*SKIN, rough=0.45))
 for s in (-1, 1):
     tag = "L" if s < 0 else "R"
     # iris/pupil/glint share the eye-white's |x| (0.27) so both eyes look straight
-    # forward (concentric), not wall-eyed; only the front-to-back depth (y) is stacked
-    white = sphere(f"Eye{tag}", 0.27, (0.27 * s, -0.40, 3.42), scale=(1.0, 0.45, 1.32))
+    # forward (concentric), not wall-eyed; only the front-to-back depth (y) is stacked.
+    # Smaller, much flatter discs pushed deeper into the head so they read as eyes
+    # painted on the face rather than orbits/glasses sticking out.
+    white = sphere(f"Eye{tag}", 0.20, (0.27 * s, -0.30, 3.42), scale=(1.0, 0.28, 1.32))
     paint(white, mat("EyeWhite", "#FFFFFF", rough=0.2))
-    iris = sphere(f"Iris{tag}", 0.175, (0.27 * s, -0.60, 3.40), scale=(1.0, 0.82, 1.05))
+    iris = sphere(f"Iris{tag}", 0.175, (0.27 * s, -0.50, 3.40), scale=(1.0, 0.82 * 0.28, 1.05))
     paint(iris, mat("Iris", "#2E86F0", rough=0.25, emit="#2E86F0", estr=0.6))  # vivid blue
-    pupil = sphere(f"Pupil{tag}", 0.085, (0.27 * s, -0.69, 3.39), scale=(1.0, 0.85, 1.05))
+    pupil = sphere(f"Pupil{tag}", 0.085, (0.27 * s, -0.59, 3.39), scale=(1.0, 0.85 * 0.28, 1.05))
     paint(pupil, mat("Pupil", "#12131A", rough=0.2))
     # catchlight: concentric in x, raised in z for a natural upper highlight
-    glint = sphere(f"Glint{tag}", 0.05, (0.27 * s, -0.74, 3.50))
+    glint = sphere(f"Glint{tag}", 0.05, (0.27 * s, -0.64, 3.50), scale=(1.0, 0.28, 1.0))
     paint(glint, mat("Glint", "#FFFFFF", rough=0.1, emit="#FFFFFF", estr=1.6))
     # flat anime-style eye outline ring laid into the face plane (faces -Y) and
-    # flattened in Y so it reads as a crisp dark lash-line around the sclera
-    outline = torus(f"EyeLine{tag}", 0.28, 0.03, (0.27 * s, -0.54, 3.42), rot=(R(90), 0, 0))
+    # flattened in Y so it reads as a crisp dark lash-line around the smaller sclera
+    outline = torus(f"EyeLine{tag}", 0.20, 0.03, (0.27 * s, -0.44, 3.42), rot=(R(90), 0, 0))
     outline.scale = (1.0, 0.15, 1.0)
     paint(outline, mat("EyeLine", "#0A0A10", rough=0.3, emit="#0A0A10", estr=0.8))
 
@@ -151,20 +153,29 @@ bpy.ops.object.convert(target="MESH")
 smile = bpy.context.active_object
 paint(smile, mat("Mouth", "#C8607E", rough=0.4))
 
-# ============================================================ HAIR (cap + flowing locks + bangs)
-cap = sphere("HairCap", 0.68, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
+# ============================================================ HAIR (high-bun style)
+# small cap as a base on the crown, a prominent chignon on top, gold cross-pins,
+# face-framing bangs, and a few wispy loose back strands.
+cap = sphere("HairCap", 0.55, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
 paint(cap, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
+# the chignon: a prominent bun sitting high on top of the head
+bun = sphere("HairBun", 0.38, (0, 0, 3.95), scale=(1.0, 0.85, 0.82))
+paint(bun, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
+# two gold decorative pins crossing through the front of the bun (kanzashi-style)
+for k, ang in enumerate((20, -20)):
+    pin = cone(f"HairPin{k}", 0.022, 0.022, 0.9, (0, -0.28, 3.95), rot=(0, R(90 + ang), 0))
+    paint(pin, mat("HairPin", "#FFD700", rough=0.3, emit="#FFD700", estr=0.5))
 # bangs: a couple of short tapered fringe shapes over the forehead
 for s in (-1, 1):
     bang = cone(f"Bang{s}", 0.22, 0.04, 0.55, (0.26 * s, -0.45, 3.62), rot=(R(s * 8), 0, 0))
     paint(bang, mat(*HAIR, rough=0.35))
-# long locks: tapered cones flowing down the back (+Y) and sides
+# wispy loose back strands (the bun is now the main hair feature, so these are short)
 lock_specs = [
-    (-0.18, 0.30, 2.55, R(172), R(-10), 3.2),   # left side lock
-    ( 0.18, 0.30, 2.55, R(172), R( 10), 3.2),   # right side lock
-    (-0.18, 0.55, 2.45, R(172), 0,      3.2),   # back-left lock
-    ( 0.18, 0.55, 2.45, R(172), 0,      3.2),   # back-right lock
-    ( 0.00, 0.62, 2.40, R(172), 0,      3.2),   # centre-back lock
+    (-0.18, 0.30, 2.55, R(172), R(-10), 2.0),   # left side strand
+    ( 0.18, 0.30, 2.55, R(172), R( 10), 2.0),   # right side strand
+    (-0.18, 0.55, 2.45, R(172), 0,      2.0),   # back-left strand
+    ( 0.18, 0.55, 2.45, R(172), 0,      2.0),   # back-right strand
+    ( 0.00, 0.62, 2.40, R(172), 0,      2.0),   # centre-back strand
 ]
 for i, (x, y, z, rx, ry, length) in enumerate(lock_specs):
     lk = cone(f"Lock{i}", 0.20, 0.05, length, (x, y, z), rot=(rx, ry, 0))
@@ -225,18 +236,18 @@ BLOSSOM = (0.74, -0.54, 2.82)      # up + outward from the hand
 # slender handle from hand to just below the blossom
 rod("WandHandle", HAND_TIP, (BLOSSOM[0] - 0.02, BLOSSOM[1] + 0.04, BLOSSOM[2] - 0.18),
     0.035, mat("WandHandle", "#EAD9A0", rough=0.4, emit="#EAD9A0", estr=0.3))
-# glowing rose blossom: scaled-up bud + a ring of petals, emissive hot-pink
-bud = sphere("RoseBud", 0.17, BLOSSOM)
-paint(bud, mat("Rose", ROSEC, rough=0.3, emit=ROSEC, estr=7.0))
-for i in range(6):
-    a = R(60 * i)
-    px = BLOSSOM[0] + math.cos(a) * 0.17
-    pz = BLOSSOM[2] + math.sin(a) * 0.17
-    petal = sphere(f"RosePetal{i}", 0.105, (px, BLOSSOM[1] - 0.03, pz), scale=(1.0, 0.55, 1.0))
-    paint(petal, mat("Rose", ROSEC, rough=0.3, emit=ROSEC, estr=6.0))
-# tiny green sepal where the blossom meets the handle
-sepal = sphere("RoseSepal", 0.07, (BLOSSOM[0] - 0.02, BLOSSOM[1] + 0.04, BLOSSOM[2] - 0.16), scale=(1, 1, 0.7))
-paint(sepal, mat("Stem", "#3E8E5A", rough=0.5))
+# vivid-red rose: a tight triangular cluster of three petal spheres on a green
+# stem, so it reads as an actual rose rather than a pale shapeless blob
+rose_mat = mat("Rose", ROSEC, rough=0.3, emit=ROSEC, estr=2.0)
+for i in range(3):
+    a = R(90 + 120 * i)
+    px = BLOSSOM[0] + math.cos(a) * 0.06
+    pz = BLOSSOM[2] + math.sin(a) * 0.06
+    petal = sphere(f"RosePetal{i}", 0.07, (px, BLOSSOM[1], pz))
+    paint(petal, rose_mat)
+# thin green stem cone joining the blossom down toward the handle
+stem = cone("RoseStem", 0.03, 0.01, 0.25, (BLOSSOM[0] - 0.02, BLOSSOM[1] + 0.04, BLOSSOM[2] - 0.18))
+paint(stem, mat("RoseStem", "#22AA22", rough=0.4, emit="#22AA22", estr=0.4))
 
 # ============================================================ WINGS (two-tone translucent dragonfly)
 # One flap-pivot empty per side; each carries two lens lobes + radiating veins.
