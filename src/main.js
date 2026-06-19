@@ -914,10 +914,16 @@ function mascotDestination(t) {
     // Rosalys's pivot sits higher relative to her body than Terra's, so her home Y is
     // lowered by this delta — apply the same compensation here so she orbits beside the
     // planet (level with Terra) instead of floating above it. Terra's delta is 0.
-    // Rosalys's pivot is at the bottom of her body (Terra's is centred), so at a planet
-    // her pivot lands at planetY and her body floats above it. Drop her by a fraction of
-    // her normalised visual height so she orbits beside the planet, level with Terra.
-    const yOffset = activeAvatarId === 'rosalys' ? -(MASCOT_HEIGHT * 0.6) : 0;
+    // Centre the avatar on the planet empirically: measure how far its visual centre
+    // (world-space bounding-box centre) sits above its pivot and cancel that out. This
+    // works regardless of scale/model size. Terra's pivot is already centred (offset 0).
+    let yOffset = 0;
+    if (activeAvatarId === 'rosalys' && rosalys) {
+      const box = new THREE.Box3().setFromObject(rosalys);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      yOffset = -(center.y - rosalys.position.y); // pivot -> visual-centre delta, inverted
+    }
     // X/Z trace the circle; Y wobbles at a *different* frequency (a * 0.5) to tilt
     // the orbit into a 3D figure-8 ellipse, plus an energetic 1.2-amplitude bob
     _mascotDest.set(
