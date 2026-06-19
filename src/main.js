@@ -573,7 +573,9 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   model.scale.setScalar(s);
   model.position.set(-center.x * s, -center.y * s, -center.z * s);
 
+  const meshNames = [];
   model.traverse((c) => {
+    if (c.isMesh) meshNames.push(c.name);
     // wing flap pivots are empty groups named exactly WingL / WingR
     if (!c.isMesh && (c.name === 'WingL' || c.name === 'WingR')) {
       rosalysWings.push({ node: c, sign: c.name === 'WingL' ? -1 : 1, baseY: c.rotation.y });
@@ -588,15 +590,19 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
       c.material.depthWrite = false;
       c.material.side = THREE.DoubleSide;
     }
-    // eyes blink independently, same scheme as Terra's
-    if (c.name === 'EyeL' || c.name === 'EyeR') {
-      rosalysEyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, nextBlink: 1 + Math.random() * 4 });
+    // eyes blink independently (white sclera only): match any 'Eye*' mesh but
+    // exclude the 'EyeLine' outline ring so only the white blinks
+    if (c.name.includes('Eye') && !c.name.includes('EyeLine')) {
+      rosalysEyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, doubleAt: -1, nextBlink: 1 + Math.random() * 4 });
     }
     // mouth: keep a handle so her smile can gently pulse (mesh is the "Smile" node)
     if (!rosalysMouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
       rosalysMouth = { mesh: c, baseX: c.scale.x };
     }
   });
+  // debug: confirm which child mesh names actually exist in the GLTF so the
+  // blink/mouth name-matching can be verified (and the blink debugged if needed)
+  console.log('[Rosalys] child meshes:', meshNames.join(', '));
 
   const pivot = new THREE.Group();
   pivot.add(model);
@@ -628,16 +634,22 @@ function animateRosalysIdle(t) {
     w.node.rotation.y = w.baseY + w.sign * Math.sin(t * 5.0) * 0.18;
   }
 
-  // eyes: independent blinks (same timing as Terra)
+  // eyes: independent blinks (white sclera only). scale.y squeezes to 0.05 over
+  // 80ms then restores; random 2–5s per eye with an occasional double-blink
+  // (a second blink 200ms after the first). Never moves the mesh.
   for (const eye of rosalysEyes) {
     if (t >= eye.nextBlink) {
       eye.blinkStart = t;
-      eye.nextBlink = t + 2 + Math.random() * 4;
+      eye.nextBlink = t + 2 + Math.random() * 3;          // next blink in 2–5s
+      eye.doubleAt = Math.random() < 0.3 ? t + 0.2 : -1;  // ~30%: queue a 2nd blink 200ms later
+    } else if (eye.doubleAt > 0 && t >= eye.doubleAt) {
+      eye.blinkStart = eye.doubleAt;                       // fire the queued second blink
+      eye.doubleAt = -1;
     }
     const bt = t - eye.blinkStart;
     let k = 1;
-    if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);
-    else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);
+    if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);        // close (80ms)
+    else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);     // open (80ms)
     eye.mesh.scale.y = eye.baseY * k;
   }
 
