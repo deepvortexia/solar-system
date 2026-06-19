@@ -42,6 +42,12 @@ const AVATAR_REGISTRY = [
 let activeAvatarId = null;        // null = no avatar selected yet (chosen in the temple)
 let appState = 'temple';          // 'temple' | 'space' — boots into the Temple of Stars
 
+// the pivot of whichever avatar is currently controlled — the flight system drives
+// this one. Resolved live (not cached) because mascot/rosalys load async.
+function activeAvatar() {
+  return activeAvatarId === 'rosalys' ? rosalys : mascot;
+}
+
 // ---------- device profile ----------
 const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
 const isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 700;
@@ -716,10 +722,16 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
 // her aura shimmer. Driven once per frame from the render loop; isolated from Terra.
 function animateRosalysIdle(t) {
   if (!rosalys) return;
-  rosalys.position.y = ROSALYS_HOME.y + Math.sin(t * 1.0) * 0.5;     // bob
-  rosalys.rotation.z = Math.sin(t * 0.7) * 0.05;                     // sway
-  rosalys.rotation.y = Math.atan2(camera.position.x - rosalys.position.x,
-                                  camera.position.z - rosalys.position.z); // face camera
+  // when Rosalys is the active flyer mid-flight, the flight system owns her
+  // position/rotation — skip the idle transform so it doesn't fight the flight.
+  if (activeAvatarId === 'rosalys' && mascotFlying) {
+    // flight owns position/rotation this frame
+  } else {
+    rosalys.position.y = ROSALYS_HOME.y + Math.sin(t * 1.0) * 0.5;     // bob
+    rosalys.rotation.z = Math.sin(t * 0.7) * 0.05;                     // sway
+    rosalys.rotation.y = Math.atan2(camera.position.x - rosalys.position.x,
+                                    camera.position.z - rosalys.position.z); // face camera
+  }
 
   // wings: gentle up/down flap, mirrored per side
   for (const w of rosalysWings) {
@@ -788,9 +800,9 @@ function flyMascotHome() {
 }
 
 function startMascotFlight() {
-  if (!mascot) return;
+  if (!activeAvatar()) return;
   arrivalZooming = false; // a new flight supersedes any in-progress arrival punch-in
-  flightFrom.copy(mascot.position);
+  flightFrom.copy(activeAvatar().position);
   flightStart = clock.elapsedTime;
   mascotFlying = true;
   // distance-based duration: crossing the now-vast system should take proportionally
@@ -805,10 +817,10 @@ function startMascotFlight() {
 
 // fire the one-shot arrival punch-in: frame the Terra+planet pair up close
 function startArrivalZoom() {
-  if (!mascot || !mascotTarget) return;
+  if (!activeAvatar() || !mascotTarget) return;
   mascotTarget.getWorldPosition(_planetWorld);
-  // close framing target: the midpoint between Terra and the planet she now orbits
-  arrivalTargetTo.addVectors(mascot.position, _planetWorld).multiplyScalar(0.5);
+  // close framing target: the midpoint between the avatar and the planet it now orbits
+  arrivalTargetTo.addVectors(activeAvatar().position, _planetWorld).multiplyScalar(0.5);
   // close distance from the planet's visual radius + Terra's orbit distance around it
   let pr = 1;
   if (mascotTarget.isMesh) {
@@ -833,7 +845,7 @@ function startArrivalZoom() {
 // arrival framing until Earth's surface fills the screen. Aimed at Earth's centre
 // and stopped just above the surface (radius * 1.08) so the sphere fills the frame.
 function startSurfaceDive() {
-  if (!mascot || !mascotTarget) return;
+  if (!activeAvatar() || !mascotTarget) return;
   mascotTarget.getWorldPosition(_planetWorld); // Earth's live centre at dive start
   let pr = 1;
   if (mascotTarget.isMesh) {
@@ -907,7 +919,9 @@ function mascotDestination(t) {
       _planetWorld.z + Math.sin(a) * mascotOrbitRadius,
     );
   } else {
-    _mascotDest.set(MASCOT_HOME.x, MASCOT_HOME.y + Math.sin(t * 1.1) * 0.6, MASCOT_HOME.z);
+    // return to the active avatar's own home spot, keeping the gentle idle bob
+    const home = activeAvatarId === 'rosalys' ? ROSALYS_HOME : MASCOT_HOME;
+    _mascotDest.set(home.x, home.y + Math.sin(t * 1.1) * 0.6, home.z);
   }
   return _mascotDest;
 }
@@ -1200,48 +1214,49 @@ function animate() {
 
   if (mascot) {
     const t = clock.elapsedTime;
+    const av = activeAvatar();         // the pivot the flight system drives this frame
     const dest = mascotDestination(t); // live target: orbit point or home, with bob
     const fe = t - flightStart;        // seconds elapsed into the current flight
     const p = THREE.MathUtils.clamp(fe / flightDuration, 0, 1); // flight progress 0..1
     if (mascotFlying) {
       const ease = p * p * (3 - 2 * p);        // smoothstep ease in/out
-      mascot.position.lerpVectors(flightFrom, dest, ease);
+      av.position.lerpVectors(flightFrom, dest, ease);
       if (p >= 1) {                            // arrived: hand off to steady orbit
         mascotFlying = false;
-        if (mascotTarget) startArrivalZoom();  // punch in close on Terra + the planet
+        if (mascotTarget) startArrivalZoom();  // punch in close on the avatar + the planet
         if (mascotArrivalCb) { const cb = mascotArrivalCb; mascotArrivalCb = null; cb(); }
       }
     } else {
-      mascot.position.copy(dest);
+      av.position.copy(dest);
     }
-    // the point light follows the mascot exactly, nudged toward the camera so the
-    // side we're looking at is always the lit side
-    mascotLight.position.copy(mascot.position);
-    _lightDir.subVectors(camera.position, mascot.position).normalize().multiplyScalar(6);
+    // the point light follows the active avatar exactly, nudged toward the camera so
+    // the side we're looking at is always the lit side
+    mascotLight.position.copy(av.position);
+    _lightDir.subVectors(camera.position, av.position).normalize().multiplyScalar(6);
     mascotLight.position.add(_lightDir);
 
     if (mascotFlying) {
       // Superman style: aim where we're going, then pitch flat (head leading).
-      _flyDir.subVectors(dest, mascot.position);
+      _flyDir.subVectors(dest, av.position);
       if (_flyDir.x * _flyDir.x + _flyDir.z * _flyDir.z > 1e-4) {
-        mascot.rotation.y = Math.atan2(_flyDir.x, _flyDir.z); // face the destination
+        av.rotation.y = Math.atan2(_flyDir.x, _flyDir.z); // face the destination
       }
-      mascot.rotation.z = 0;
+      av.rotation.z = 0;
       // pitch toward horizontal over the first 0.3s, hold, then straighten in the
       // last 0.3s (p > 0.85) for an upright landing
       if (p > 0.85) {
-        mascot.rotation.x = THREE.MathUtils.lerp(-1.4, 0, (p - 0.85) / 0.15);
+        av.rotation.x = THREE.MathUtils.lerp(-1.4, 0, (p - 0.85) / 0.15);
       } else if (fe < 0.3) {
-        mascot.rotation.x = THREE.MathUtils.lerp(0, -1.4, fe / 0.3);
+        av.rotation.x = THREE.MathUtils.lerp(0, -1.4, fe / 0.3);
       } else {
-        mascot.rotation.x = -1.4; // cruising flat
+        av.rotation.x = -1.4; // cruising flat
       }
     } else {
       // not flying: face the camera on the Y axis only, fully upright
-      mascot.rotation.y = Math.atan2(camera.position.x - mascot.position.x,
-                                     camera.position.z - mascot.position.z);
-      mascot.rotation.z = 0;
-      mascot.rotation.x = 0;
+      av.rotation.y = Math.atan2(camera.position.x - av.position.x,
+                                     camera.position.z - av.position.z);
+      av.rotation.z = 0;
+      av.rotation.x = 0;
     }
 
     // flames: while boosting to a planet, double the length and flicker far faster
@@ -1312,7 +1327,7 @@ function animate() {
     // surface mode: shrink Terra so she reads as a tiny astronaut against the giant
     // Earth instead of floating at near-equal size; eased back to full size on return
     const targetMascotScale = document.body.classList.contains('surface-mode') ? MASCOT_SURFACE_SCALE : 1;
-    mascot.scale.setScalar(THREE.MathUtils.lerp(mascot.scale.x, targetMascotScale, 0.08));
+    av.scale.setScalar(THREE.MathUtils.lerp(av.scale.x, targetMascotScale, 0.08));
   }
 
   animateRosalysIdle(clock.elapsedTime); // decorative companion; isolated from Terra
@@ -1348,15 +1363,16 @@ function animate() {
   // static view. Released on arrival (OrbitControls resumes). Skipped while resetting,
   // which owns the camera and returns it home.
   if (mascot && mascotFlying && !resetting) {
+    const av = activeAvatar();
     // keep scroll-wheel zoom live during the flight: refresh the held offset's
-    // *length* to the user's current camera->Terra distance (controls.update()
+    // *length* to the user's current camera->avatar distance (controls.update()
     // applied their dolly last frame) while its *direction* still drives the
     // follow glide. Without this the fixed-length offset reverts every zoom.
-    const curDist = camera.position.distanceTo(mascot.position);
+    const curDist = camera.position.distanceTo(av.position);
     if (curDist > 1e-4) flightCamOffset.setLength(curDist);
-    _camDesired.addVectors(mascot.position, flightCamOffset);
+    _camDesired.addVectors(av.position, flightCamOffset);
     camera.position.lerp(_camDesired, 0.05);
-    controls.target.lerp(mascot.position, 0.05);
+    controls.target.lerp(av.position, 0.05);
   }
 
   // arrival punch-in: a one-shot ease-out zoom from the far follow-camera onto the
