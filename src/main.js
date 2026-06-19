@@ -1102,9 +1102,26 @@ document.getElementById('enter-space').addEventListener('click', () => {
 document.getElementById('back-to-temple').addEventListener('click', () => {
   appState = 'temple';
   document.getElementById('back-to-temple').style.display = 'none';
-  document.getElementById('avatar-selection').style.display = 'flex';
-  document.getElementById('enter-space').style.display = 'block';
   document.getElementById('hint').style.display = 'none';
+
+  // Reset avatar state when returning to temple
+  activeAvatarId = null;
+  applyAvatarVisibility(); // hides both avatars in space
+
+  // a flight/arrival may be in progress — cancel it so the avatar isn't left tracking
+  mascotFlying = false;
+  arrivalZooming = false;
+  if (mascotTarget) mascotTarget = null;
+
+  // Reset card selection UI
+  document.querySelectorAll('.avatar-card')
+    .forEach((c) => c.classList.remove('selected'));
+
+  // Hide GO TO SPACE until new selection
+  document.getElementById('enter-space').style.display = 'none';
+
+  // Show avatar selection cards
+  document.getElementById('avatar-selection').style.display = 'flex';
 });
 
 // temple boots on load: reveal the avatar selection cards
