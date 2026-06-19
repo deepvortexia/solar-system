@@ -1002,6 +1002,14 @@ function showInfo(name) {
     .join('');
   document.getElementById('info-fact').textContent = d.fact;
   panel.classList.add('open');
+  document.body.classList.add('panel-open'); // CSS hides conflicting overlays (zoom bar, etc.)
+}
+
+// close the info panel and clear the overlay-hiding body class in lockstep, so the
+// two never drift (the panel is dismissed from several places)
+function closeInfoPanel() {
+  panel.classList.remove('open');
+  document.body.classList.remove('panel-open');
 }
 
 let resetting = false;
@@ -1020,7 +1028,7 @@ function computeOverviewPosition(out) {
 function resetView() {
   followTarget = null;
   arrivalZooming = false; // overview pull-back supersedes any arrival punch-in
-  panel.classList.remove('open');
+  closeInfoPanel();
   flyMascotHome();
   // primary job now: pull back to show the ENTIRE system. Fall back to the close-up
   // HOME_POS only if the layout hasn't been measured yet (GLTF still loading).
@@ -1060,11 +1068,11 @@ function hideBadge() {
 function showArrival(name) {
   if (isMobileLayout()) {
     const d = PLANET_DATA[name];
-    showBadge(d ? `${name} · ${d.type}` : name, 4000); // compact pill, auto-hide after 4s
+    showBadge(d ? `${name} · ${d.type}` : name, 4000); // brief "arriving" pill, auto-hides
   } else {
     hideBadge();
-    showInfo(name); // side panel, fades in via CSS
   }
+  showInfo(name); // open the full info panel on every screen size (bottom sheet on mobile)
 }
 
 let downAt = null;
@@ -1086,12 +1094,12 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const obj = pick(e);
   if (obj) {
     followTarget = obj;
-    panel.classList.remove('open');  // info appears on arrival, not on click
+    closeInfoPanel();  // info appears on arrival, not on click
     // Terra flies to the planet; the info is revealed only when she arrives there
     showBadge(`Flying to ${obj.name}…`);
     flyMascotTo(obj, () => showArrival(obj.name));
   } else {
-    panel.classList.remove('open');
+    closeInfoPanel();
     hideBadge();
     followTarget = null;
     flyMascotHome();
@@ -1121,7 +1129,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 });
 
 document.getElementById('close-panel').addEventListener('click', () => {
-  panel.classList.remove('open');
+  closeInfoPanel();
   followTarget = null;
   // the panel just closes; Terra keeps orbiting the planet she flew to
 });
@@ -1199,7 +1207,7 @@ panel.addEventListener('touchend', (e) => {
   sheetTouch = null;
   if (!window.matchMedia('(max-width: 600px)').matches) return; // sheet layout only
   if (panel.scrollTop <= 0 && dy > 70 && dx < 80) {
-    panel.classList.remove('open');
+    closeInfoPanel();
     followTarget = null;
     // swipe-down only dismisses the panel; Terra keeps orbiting
   }

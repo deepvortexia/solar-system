@@ -242,6 +242,14 @@ body.surface-mode #info-panel {
   transition: opacity 0.6s ease;
 }
 
+/* hide controls that would float over the info panel while it's open */
+body.panel-open #zoom-bar,
+body.panel-open #reset-view,
+body.panel-open #hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* "Visiting Earth" panel — same open/opacity pattern as #info-panel, centred at
    the bottom so Earth's surface fills the screen behind it */
 #surface-panel {
@@ -381,8 +389,8 @@ body.surface-mode #info-panel {
 /* "⬅ Temple" — return to the home screen, shown only in space mode */
 #back-to-temple {
   position: fixed;
-  top: 20px;
-  left: 20px;
+  top: max(20px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
   padding: 10px 22px;
   font-size: 0.95rem;
   letter-spacing: 0.08em;
@@ -422,10 +430,17 @@ body.surface-mode #info-panel {
   user-select: none;
 }
 
-.avatar-card:hover {
-  transform: translateY(-6px);
+@media (hover: hover) {
+  .avatar-card:hover {
+    transform: translateY(-6px);
+    border-color: #cc88ff;
+    box-shadow: 0 0 30px #8844cc88;
+  }
+}
+
+.avatar-card:active {
+  transform: translateY(-3px) scale(0.98);
   border-color: #cc88ff;
-  box-shadow: 0 0 30px #8844cc88;
 }
 
 .avatar-card.selected {
@@ -485,7 +500,7 @@ body.surface-mode #info-panel {
 /* vertical zoom slider — left side, space mode only */
 #zoom-bar {
   position: fixed;
-  left: 20px;
+  left: max(20px, env(safe-area-inset-left));
   top: 50%;
   transform: translateY(-50%);
   display: none;
@@ -554,7 +569,62 @@ body.surface-mode #info-panel {
 
 @media (max-width: 768px) {
   #zoom-bar { left: 10px; }
-  #zoom-in, #zoom-out { width: 38px; height: 38px; }
-  #zoom-track { height: 160px; width: 5px; }
-  #zoom-thumb { width: 16px; height: 16px; }
+  #zoom-in, #zoom-out { width: 44px; height: 44px; font-size: 1.4rem; }
+  #zoom-track { width: 10px; height: 160px; }
+  #zoom-thumb { width: 26px; height: 26px; }
+}
+
+/* let the slider own its touch gestures; kill double-tap-zoom / tap delay on buttons */
+#zoom-bar, #zoom-track, #zoom-thumb {
+  touch-action: none;
+}
+#zoom-in, #zoom-out,
+#back-to-temple, #enter-space,
+#reset-view {
+  touch-action: manipulation;
+}
+
+/* landscape phones (wide but short): compact the chrome so nothing overflows/overlaps */
+@media (orientation: landscape) and (max-height: 500px) {
+  #zoom-bar {
+    left: 10px;
+  }
+  #zoom-track {
+    height: 100px;
+  }
+  #zoom-in, #zoom-out {
+    width: 32px;
+    height: 32px;
+    font-size: 1.1rem;
+  }
+  #hint {
+    bottom: 8px;
+    font-size: 0.72rem;
+    padding: 6px 14px;
+  }
+  #reset-view {
+    bottom: 8px;
+    right: 8px;
+  }
+  #back-to-temple {
+    top: 8px;
+    left: 8px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+  }
+  #enter-space {
+    bottom: 8px;
+    font-size: 0.9rem;
+    padding: 10px 24px;
+  }
+  #avatar-selection {
+    bottom: 60px;
+    gap: 10px;
+  }
+  .avatar-card {
+    width: 110px;
+    padding: 12px 10px;
+  }
+  .avatar-emoji { font-size: 1.6rem; }
+  .avatar-name { font-size: 0.85rem; }
 }
