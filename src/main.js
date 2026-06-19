@@ -911,11 +911,15 @@ function mascotDestination(t) {
   if (mascotTarget) {
     mascotTarget.getWorldPosition(_planetWorld);
     const a = t * 0.8; // angular speed of the mascot's orbit around the planet
+    // Rosalys's pivot sits higher relative to her body than Terra's, so her home Y is
+    // lowered by this delta — apply the same compensation here so she orbits beside the
+    // planet (level with Terra) instead of floating above it. Terra's delta is 0.
+    const yOffset = activeAvatarId === 'rosalys' ? ROSALYS_HOME.y - MASCOT_HOME.y : 0;
     // X/Z trace the circle; Y wobbles at a *different* frequency (a * 0.5) to tilt
     // the orbit into a 3D figure-8 ellipse, plus an energetic 1.2-amplitude bob
     _mascotDest.set(
       _planetWorld.x + Math.cos(a) * mascotOrbitRadius,
-      _planetWorld.y + Math.sin(a * 0.5) * mascotOrbitRadius * 0.4 + Math.sin(t * 1.6) * 1.2,
+      _planetWorld.y + yOffset + Math.sin(a * 0.5) * mascotOrbitRadius * 0.4 + Math.sin(t * 1.6) * 1.2,
       _planetWorld.z + Math.sin(a) * mascotOrbitRadius,
     );
   } else {
