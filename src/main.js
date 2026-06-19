@@ -640,6 +640,7 @@ const rosalysWings = [];            // { node, sign, baseY } — flap pivots (Wi
 let rosalysHalo = null;             // pink halo ring (pulses)
 let rosalysMouth = null;            // { mesh, baseY } — gentle smile pulse
 const rosalysWaves = [];            // [{ mesh, phase }] — gentle continuous ripple
+let rosalysBodyCenterOffset = 0;    // pivot->body-centre Y delta (inverted), measured once at load
 // floats to one side of Terra's home, slightly lower/forward so both read clearly
 const ROSALYS_HOME = new THREE.Vector3(MASCOT_HOME.x - 9, MASCOT_HOME.y - 1.5, MASCOT_HOME.z + 2);
 
@@ -697,6 +698,28 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   pivot.position.copy(ROSALYS_HOME);
   scene.add(pivot);
   rosalys = pivot;
+
+  // Measure how far her body's visual centre sits above the pivot, so the orbit code can
+  // cancel it and she circles a planet level with Terra. Done now — BEFORE the aura/label
+  // are attached — because makeAura's halo/wave meshes are unnamed (the name filter below
+  // can't catch them) and the label is a sprite; measuring here keeps it body-only.
+  {
+    const box = new THREE.Box3();
+    rosalys.traverse((c) => {
+      if (c.isMesh &&
+          !c.name.toLowerCase().includes('halo') &&
+          !c.name.toLowerCase().includes('wave') &&
+          !c.name.toLowerCase().includes('ring') &&
+          !c.name.toLowerCase().includes('aura')) {
+        box.expandByObject(c);
+      }
+    });
+    if (!box.isEmpty()) {
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      rosalysBodyCenterOffset = -(center.y - rosalys.position.y);
+    }
+  }
 
   // rose-pink / violet aura via the same shared helper Terra uses (different colours)
   const aura = makeAura(pivot, MASCOT_HEIGHT / 2 + 0.5, 0xff5cc8, 0xc05cff);
@@ -911,19 +934,9 @@ function mascotDestination(t) {
   if (mascotTarget) {
     mascotTarget.getWorldPosition(_planetWorld);
     const a = t * 0.8; // angular speed of the mascot's orbit around the planet
-    // Rosalys's pivot sits higher relative to her body than Terra's, so her home Y is
-    // lowered by this delta — apply the same compensation here so she orbits beside the
-    // planet (level with Terra) instead of floating above it. Terra's delta is 0.
-    // Centre the avatar on the planet empirically: measure how far its visual centre
-    // (world-space bounding-box centre) sits above its pivot and cancel that out. This
-    // works regardless of scale/model size. Terra's pivot is already centred (offset 0).
-    let yOffset = 0;
-    if (activeAvatarId === 'rosalys' && rosalys) {
-      const box = new THREE.Box3().setFromObject(rosalys);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      yOffset = -(center.y - rosalys.position.y); // pivot -> visual-centre delta, inverted
-    }
+    // Cancel Rosalys's pivot->body-centre delta (measured once at load) so she orbits a
+    // planet level with Terra. Terra's pivot is already centred, so her offset is 0.
+    const yOffset = activeAvatarId === 'rosalys' ? rosalysBodyCenterOffset : 0;
     // X/Z trace the circle; Y wobbles at a *different* frequency (a * 0.5) to tilt
     // the orbit into a 3D figure-8 ellipse, plus an energetic 1.2-amplitude bob
     _mascotDest.set(
