@@ -554,7 +554,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
 // that lets either character fly to planets is a later, separate step. For now she
 // just floats beside Terra's home, bobbing + flapping + blinking with a pink aura.
 let rosalys = null;                 // pivot group
-const rosalysEyes = [];             // { mesh, baseY, blinkStart, nextBlink }
+const rosalysEyes = [];             // [{ parts:[{mesh,baseY}], blinkStart, nextBlink }] per eye
 const rosalysWings = [];            // { node, sign, baseY } — flap pivots (WingL/WingR)
 let rosalysHalo = null;             // pink halo ring (pulses)
 let rosalysMouth = null;            // { mesh, baseY } — gentle smile pulse
@@ -574,6 +574,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   model.position.set(-center.x * s, -center.y * s, -center.z * s);
 
   const meshNames = [];
+  const eyeGroups = {}; // side ('L'/'R') -> { parts:[{mesh,baseY}], blinkStart, nextBlink }
   model.traverse((c) => {
     if (c.isMesh) meshNames.push(c.name);
     // wing flap pivots are empty groups named exactly WingL / WingR
@@ -590,10 +591,15 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
       c.material.depthWrite = false;
       c.material.side = THREE.DoubleSide;
     }
-    // eyes blink independently (white sclera only): match any 'Eye*' mesh but
-    // exclude the 'EyeLine' outline ring so only the white blinks
-    if (c.name.includes('Eye') && !c.name.includes('EyeLine')) {
-      rosalysEyes.push({ mesh: c, baseY: c.scale.y, blinkStart: -10, doubleAt: -1, nextBlink: 1 + Math.random() * 4 });
+    // eyes blink — mirror Terra's mechanism exactly (traverse match, scale.y,
+    // 2–6s clock). Group sclera + iris + pupil per side (EyeL/IrisL/PupilL, etc.)
+    // onto ONE clock so they squeeze in lockstep; without this the iris (which
+    // nearly fills the sclera) hides the blink. EyeLine/Glint are left alone.
+    if (/^(Eye|Iris|Pupil)[LR]$/.test(c.name)) {
+      const side = c.name.slice(-1);
+      const g = eyeGroups[side] || (eyeGroups[side] =
+        { parts: [], blinkStart: -10, nextBlink: 1 + Math.random() * 4 });
+      g.parts.push({ mesh: c, baseY: c.scale.y });
     }
     // mouth: keep a handle so her smile can gently pulse (mesh is the "Smile" node)
     if (!rosalysMouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
@@ -603,6 +609,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   // debug: confirm which child mesh names actually exist in the GLTF so the
   // blink/mouth name-matching can be verified (and the blink debugged if needed)
   console.log('[Rosalys] child meshes:', meshNames.join(', '));
+  rosalysEyes.push(...Object.values(eyeGroups)); // one lockstep blink group per eye
 
   const pivot = new THREE.Group();
   pivot.add(model);
@@ -634,23 +641,19 @@ function animateRosalysIdle(t) {
     w.node.rotation.y = w.baseY + w.sign * Math.sin(t * 5.0) * 0.18;
   }
 
-  // eyes: independent blinks (white sclera only). scale.y squeezes to 0.05 over
-  // 80ms then restores; random 2–5s per eye with an occasional double-blink
-  // (a second blink 200ms after the first). Never moves the mesh.
+  // eyes: independent per-eye blinks, mirroring Terra exactly — scale.y closes to
+  // 0.05 over 0.08s then reopens, rescheduled 2–6s out. All parts of an eye
+  // (sclera + iris + pupil) share one clock so they squeeze in lockstep.
   for (const eye of rosalysEyes) {
     if (t >= eye.nextBlink) {
       eye.blinkStart = t;
-      eye.nextBlink = t + 2 + Math.random() * 3;          // next blink in 2–5s
-      eye.doubleAt = Math.random() < 0.3 ? t + 0.2 : -1;  // ~30%: queue a 2nd blink 200ms later
-    } else if (eye.doubleAt > 0 && t >= eye.doubleAt) {
-      eye.blinkStart = eye.doubleAt;                       // fire the queued second blink
-      eye.doubleAt = -1;
+      eye.nextBlink = t + 2 + Math.random() * 4; // 2-6s
     }
     const bt = t - eye.blinkStart;
     let k = 1;
-    if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);        // close (80ms)
-    else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);     // open (80ms)
-    eye.mesh.scale.y = eye.baseY * k;
+    if (bt >= 0 && bt < 0.08) k = THREE.MathUtils.lerp(1, 0.05, bt / 0.08);     // closing
+    else if (bt < 0.16) k = THREE.MathUtils.lerp(0.05, 1, (bt - 0.08) / 0.08);  // opening
+    for (const p of eye.parts) p.mesh.scale.y = p.baseY * k;
   }
 
   // mouth: subtle smile pulse — widen/narrow horizontally only (±4% X scale,
