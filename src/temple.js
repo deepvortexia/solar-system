@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+
+// RectAreaLight needs its BRDF LUTs initialized once before it emits any light
+RectAreaLightUniformsLib.init();
 
 // Temple of Stars — a self-contained home-screen scene that SHARES the app's
 // renderer. This module imports nothing from main.js (one-way dependency, no
@@ -43,15 +47,22 @@ export function createTemple({ renderer }) {
     templeScene.add(pl);
   }
 
-  // ---- mirror floor: dark glossy plane (stylized, no Reflector pass)
+  // ---- mirror floor: deep-purple glossy plane that still reads as a surface
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(60, 60),
     new THREE.MeshStandardMaterial({
-      color: 0x110022, roughness: 0.05, metalness: 0.8, envMapIntensity: 1.0,
+      color: 0x1a0533, roughness: 0.15, metalness: 0.6,
+      emissive: 0x220044, emissiveIntensity: 0.3,
     }),
   );
   floor.rotation.x = -Math.PI / 2;
   templeScene.add(floor);
+
+  // overhead area light to wash the floor and reveal the column reflections
+  const floorLight = new THREE.RectAreaLight(0xffffff, 2, 30, 30);
+  floorLight.position.set(0, 8, 0);
+  floorLight.lookAt(0, 0, 0);
+  templeScene.add(floorLight);
 
   // ---- crystal columns: 8 hexagonal tapered pillars in a circle of radius 14.
   // Each gets its OWN material so the per-column emissive breathe is independent.

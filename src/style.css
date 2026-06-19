@@ -377,3 +377,20 @@ body.surface-mode #info-panel {
   box-shadow: 0 0 30px #8844cc88;
   z-index: 40;
 }
+
+/* "⬅ Temple" — return to the home screen, shown only in space mode */
+#back-to-temple {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  padding: 10px 22px;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  background: rgba(68, 17, 170, 0.7);
+  color: #fff;
+  border: 1px solid #cc88ff;
+  border-radius: 20px;
+  cursor: pointer;
+  z-index: 40;
+  backdrop-filter: blur(6px);
+}

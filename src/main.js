@@ -169,6 +169,8 @@ const temple = createTemple({ renderer });
 let templeMascot = null;       // Terra clone shown on her temple pedestal
 let templeRosalys = null;      // Rosalys clone shown on her temple pedestal
 let templeButtonShown = false; // reveal the GO TO SPACE button once, on first temple frame
+// boot starts in the temple, so the space "drag/scroll/click" hint must start hidden
+document.getElementById('hint').style.display = 'none';
 
 // ---------- circular sun halo ----------
 // Additive blending adds the texture's RGB to the screen, so the gradient must
@@ -591,7 +593,9 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   // aren't skinned so a plain clone is correct)
   templeMascot = mascot.clone();
   const tSlot = temple.avatarSlots[0];
-  templeMascot.position.set(tSlot.x, tSlot.y, tSlot.z);
+  templeMascot.scale.setScalar(3.5);
+  templeMascot.rotation.set(0, 0, 0);
+  templeMascot.position.set(tSlot.x, 1, tSlot.z);
   temple.scene.add(templeMascot);
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
@@ -676,7 +680,9 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   // temple: a display-only clone on the right pedestal (space original untouched)
   templeRosalys = rosalys.clone();
   const rSlot = temple.avatarSlots[1];
-  templeRosalys.position.set(rSlot.x, rSlot.y, rSlot.z);
+  templeRosalys.scale.setScalar(3.5);
+  templeRosalys.rotation.set(0, 0, 0);
+  templeRosalys.position.set(rSlot.x, 1, rSlot.z);
   temple.scene.add(templeRosalys);
 }, undefined, (err) => {
   console.error('Rosalys failed to load:', err); // non-fatal
@@ -1060,6 +1066,16 @@ document.getElementById('reset-view').addEventListener('click', resetView);
 document.getElementById('enter-space').addEventListener('click', () => {
   appState = 'space';
   document.getElementById('enter-space').style.display = 'none';
+  document.getElementById('hint').style.display = 'block';
+  document.getElementById('back-to-temple').style.display = 'block';
+});
+
+// back to the Temple of Stars home screen from space
+document.getElementById('back-to-temple').addEventListener('click', () => {
+  appState = 'temple';
+  document.getElementById('back-to-temple').style.display = 'none';
+  document.getElementById('enter-space').style.display = 'block';
+  document.getElementById('hint').style.display = 'none';
 });
 
 // "Return to space" leaves the surface view and pulls back to the system overview
