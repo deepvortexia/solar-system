@@ -156,14 +156,14 @@ paint(smile, mat("Mouth", "#C8607E", rough=0.4))
 # ============================================================ HAIR (high-bun style)
 # small cap as a base on the crown, a prominent chignon on top, gold cross-pins,
 # face-framing bangs, and a few wispy loose back strands.
-cap = sphere("HairCap", 0.55, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
+cap = sphere("HairCap", 0.62, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
 paint(cap, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
-# the chignon: a prominent bun sitting high on top of the head
-bun = sphere("HairBun", 0.38, (0, 0, 3.95), scale=(1.0, 0.85, 0.82))
+# the chignon: a neat bun sitting on top of the head cap (not floating above it)
+bun = sphere("HairBun", 0.28, (0, 0, 3.72), scale=(1.0, 0.85, 0.82))
 paint(bun, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
 # two gold decorative pins crossing through the front of the bun (kanzashi-style)
 for k, ang in enumerate((20, -20)):
-    pin = cone(f"HairPin{k}", 0.022, 0.022, 0.9, (0, -0.28, 3.95), rot=(0, R(90 + ang), 0))
+    pin = cone(f"HairPin{k}", 0.022, 0.022, 0.9, (0, -0.22, 3.72), rot=(0, R(90 + ang), 0))
     paint(pin, mat("HairPin", "#FFD700", rough=0.3, emit="#FFD700", estr=0.5))
 # bangs: a couple of short tapered fringe shapes over the forehead
 for s in (-1, 1):

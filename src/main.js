@@ -594,7 +594,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
     }
     // mouth: keep a handle so her smile can gently pulse (mesh is the "Smile" node)
     if (!rosalysMouth && (c.name.includes('Smile') || c.name.includes('Mouth'))) {
-      rosalysMouth = { mesh: c, baseY: c.scale.y };
+      rosalysMouth = { mesh: c, baseX: c.scale.x };
     }
   });
 
@@ -641,9 +641,10 @@ function animateRosalysIdle(t) {
     eye.mesh.scale.y = eye.baseY * k;
   }
 
-  // mouth: subtle smile pulse (±5% Y scale, ~2s cycle) so she doesn't look frozen
+  // mouth: subtle smile pulse — widen/narrow horizontally only (±4% X scale,
+  // ~2s cycle) so the smile stays on the face instead of drifting up/down
   if (rosalysMouth) {
-    rosalysMouth.mesh.scale.y = rosalysMouth.baseY * (1 + 0.05 * Math.sin(t * Math.PI));
+    rosalysMouth.mesh.scale.x = rosalysMouth.baseX * (1 + 0.04 * Math.sin(t * Math.PI));
   }
 
   // halo: pulse intensity + breathe scale, like Terra's idle halo
