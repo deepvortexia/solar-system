@@ -577,6 +577,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   pivot.position.set(0, MASCOT_Y, 0);
   scene.add(pivot);
   mascot = pivot;
+  mascot.visible = (activeAvatarId === 'terra'); // only the active avatar shows in space
 
   // pulsing energy halo + flight ripple waves, just above Terra's head. Cyan, via
   // the shared makeAura helper (same colour/values as before); animated in the loop.
@@ -669,6 +670,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   pivot.position.copy(ROSALYS_HOME);
   scene.add(pivot);
   rosalys = pivot;
+  rosalys.visible = (activeAvatarId === 'rosalys'); // only the active avatar shows in space
 
   // rose-pink / violet aura via the same shared helper Terra uses (different colours)
   const aura = makeAura(pivot, MASCOT_HEIGHT / 2 + 0.5, 0xff5cc8, 0xc05cff);
@@ -1013,6 +1015,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   arrivalZooming = false; // ...or mid arrival punch-in — hand them control immediately
 });
 renderer.domElement.addEventListener('pointerup', (e) => {
+  if (appState === 'temple') return; // temple owns its own UI; no space picking
   if (!downAt) return;
   const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
   downAt = null;
@@ -1041,6 +1044,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (e) => {
+  if (appState === 'temple') return; // no space tooltip/cursor while in the temple
   if (e.pointerType === 'touch') return; // no hover on touch; labels cover it
   const obj = pick(e);
   renderer.domElement.style.cursor = obj ? 'pointer' : 'grab';
@@ -1065,6 +1069,14 @@ document.getElementById('reset-view').addEventListener('click', resetView);
 // GO TO SPACE: leave the temple home screen and enter the solar system
 document.getElementById('enter-space').addEventListener('click', () => {
   appState = 'space';
+  // Show only the active avatar in space
+  if (activeAvatarId === 'terra') {
+    if (mascot) mascot.visible = true;
+    if (rosalys) rosalys.visible = false;
+  } else {
+    if (mascot) mascot.visible = false;
+    if (rosalys) rosalys.visible = true;
+  }
   document.getElementById('enter-space').style.display = 'none';
   document.getElementById('hint').style.display = 'block';
   document.getElementById('back-to-temple').style.display = 'block';
