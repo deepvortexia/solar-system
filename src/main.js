@@ -616,6 +616,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   templeMascot.scale.setScalar(3.5);
   templeMascot.rotation.set(0, 0, 0);
   templeMascot.position.set(tSlot.x, 1, tSlot.z);
+  templeMascot.visible = false; // cards replace the 3D temple clones
   temple.scene.add(templeMascot);
   applyAvatarVisibility(); // set space visibility AFTER cloning so the temple clone stays visible
 }, undefined, (err) => {
@@ -704,6 +705,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   templeRosalys.scale.setScalar(3.5);
   templeRosalys.rotation.set(0, 0, 0);
   templeRosalys.position.set(rSlot.x, 1, rSlot.z);
+  templeRosalys.visible = false; // cards replace the 3D temple clones
   temple.scene.add(templeRosalys);
   applyAvatarVisibility(); // set space visibility AFTER cloning so the temple clone stays visible
 }, undefined, (err) => {
@@ -1091,6 +1093,7 @@ document.getElementById('enter-space').addEventListener('click', () => {
   appState = 'space';
   applyAvatarVisibility(); // show only the active avatar (and its label) in space
   document.getElementById('enter-space').style.display = 'none';
+  document.getElementById('avatar-selection').style.display = 'none';
   document.getElementById('hint').style.display = 'block';
   document.getElementById('back-to-temple').style.display = 'block';
 });
@@ -1099,8 +1102,27 @@ document.getElementById('enter-space').addEventListener('click', () => {
 document.getElementById('back-to-temple').addEventListener('click', () => {
   appState = 'temple';
   document.getElementById('back-to-temple').style.display = 'none';
+  document.getElementById('avatar-selection').style.display = 'flex';
   document.getElementById('enter-space').style.display = 'block';
   document.getElementById('hint').style.display = 'none';
+});
+
+// temple boots on load: reveal the avatar selection cards
+document.getElementById('avatar-selection').style.display = 'flex';
+
+// avatar selection cards: clicking one selects that avatar and reveals GO TO SPACE
+document.getElementById('card-terra').addEventListener('click', () => {
+  activeAvatarId = 'terra';
+  document.querySelectorAll('.avatar-card').forEach((c) => c.classList.remove('selected'));
+  document.getElementById('card-terra').classList.add('selected');
+  document.getElementById('enter-space').style.display = 'block';
+});
+
+document.getElementById('card-rosalys').addEventListener('click', () => {
+  activeAvatarId = 'rosalys';
+  document.querySelectorAll('.avatar-card').forEach((c) => c.classList.remove('selected'));
+  document.getElementById('card-rosalys').classList.add('selected');
+  document.getElementById('enter-space').style.display = 'block';
 });
 
 // "Return to space" leaves the surface view and pulls back to the system overview

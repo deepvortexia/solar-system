@@ -394,3 +394,90 @@ body.surface-mode #info-panel {
   z-index: 40;
   backdrop-filter: blur(6px);
 }
+
+/* avatar selection cards — floating over the temple 3D background */
+#avatar-selection {
+  position: fixed;
+  bottom: 160px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 32px;
+  flex-direction: row;
+  z-index: 50;
+}
+
+.avatar-card {
+  position: relative;
+  width: 160px;
+  background: rgba(20, 5, 50, 0.82);
+  border: 2px solid #6633cc;
+  border-radius: 24px;
+  padding: 24px 16px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  backdrop-filter: blur(12px);
+  color: #fff;
+  user-select: none;
+}
+
+.avatar-card:hover {
+  transform: translateY(-6px);
+  border-color: #cc88ff;
+  box-shadow: 0 0 30px #8844cc88;
+}
+
+.avatar-card.selected {
+  border-color: #ffcc44;
+  box-shadow: 0 0 40px #ffcc4466, 0 0 80px #ffcc4422;
+  transform: translateY(-10px) scale(1.04);
+}
+
+.avatar-emoji {
+  font-size: 3rem;
+  margin-bottom: 10px;
+}
+
+.avatar-name {
+  font-size: 1.2rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  color: #cc88ff;
+  margin-bottom: 6px;
+}
+
+.avatar-speed {
+  font-size: 0.78rem;
+  color: #aabbff;
+  margin-bottom: 4px;
+}
+
+.avatar-price {
+  font-size: 0.85rem;
+  color: #ffcc44;
+  font-weight: bold;
+  margin-bottom: 14px;
+}
+
+.avatar-select-btn {
+  background: linear-gradient(135deg, #4411aa, #aa44ff);
+  border-radius: 20px;
+  padding: 8px 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  #avatar-selection {
+    gap: 16px;
+    bottom: 140px;
+  }
+  .avatar-card {
+    width: 130px;
+    padding: 18px 12px 16px;
+  }
+  .avatar-emoji { font-size: 2.2rem; }
+  .avatar-name { font-size: 1rem; }
+}
