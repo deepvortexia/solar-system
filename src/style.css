@@ -359,3 +359,21 @@ body.surface-mode #info-panel {
     margin-bottom: 14px;
   }
 }
+
+/* Temple of Stars — "GO TO SPACE" entry button (shown only on the home screen) */
+#enter-space {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 16px 40px;
+  font-size: 1.3rem;
+  letter-spacing: 0.15em;
+  background: linear-gradient(135deg, #4411aa, #aa44ff);
+  color: #fff;
+  border: 2px solid #cc88ff;
+  border-radius: 40px;
+  cursor: pointer;
+  box-shadow: 0 0 30px #8844cc88;
+  z-index: 40;
+}

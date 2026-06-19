@@ -6,6 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PLANET_DATA, ORBITS } from './planetData.js';
 import './style.css';
+import { createTemple } from './temple.js';
 
 // ---------- avatar registry (data-driven foundation; not yet consumed) ----------
 // Single source of truth for the avatar roster. STEP 0 only declares it — the
@@ -39,7 +40,7 @@ const AVATAR_REGISTRY = [
 ];
 
 let activeAvatarId = 'terra';     // which avatar is currently controlled (reserved)
-let appState = 'space';           // 'temple' | 'space' (stays 'space' until the temple exists)
+let appState = 'temple';          // 'temple' | 'space' — boots into the Temple of Stars
 
 // ---------- device profile ----------
 const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
@@ -162,6 +163,12 @@ let starSpeeds = null;
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new OutputPass());
+
+// ---------- temple home screen (separate scene, shared renderer) ----------
+const temple = createTemple({ renderer });
+let templeMascot = null;       // Terra clone shown on her temple pedestal
+let templeRosalys = null;      // Rosalys clone shown on her temple pedestal
+let templeButtonShown = false; // reveal the GO TO SPACE button once, on first temple frame
 
 // ---------- circular sun halo ----------
 // Additive blending adds the texture's RGB to the screen, so the gradient must
@@ -578,6 +585,14 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   // floating name label, same sprite/canvas system as the planets. The model is
   // re-centred to span ±MASCOT_HEIGHT/2, so this sits just above the head/ring.
   addLabel(mascot, 'Terra', MASCOT_HEIGHT / 2 + 1.3, 1.4); // 1.4x bigger so Terra stands out
+
+  // temple: a display-only clone on the left pedestal (the space original is
+  // untouched; clone() shares geometry/materials so it's cheap, and these meshes
+  // aren't skinned so a plain clone is correct)
+  templeMascot = mascot.clone();
+  const tSlot = temple.avatarSlots[0];
+  templeMascot.position.set(tSlot.x, tSlot.y, tSlot.z);
+  temple.scene.add(templeMascot);
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
@@ -657,6 +672,12 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   rosalysWaves.push(...aura.waves);
 
   addLabel(rosalys, 'Rosalys', MASCOT_HEIGHT / 2 + 4.3, 1.3); // raised clear above her halo
+
+  // temple: a display-only clone on the right pedestal (space original untouched)
+  templeRosalys = rosalys.clone();
+  const rSlot = temple.avatarSlots[1];
+  templeRosalys.position.set(rSlot.x, rSlot.y, rSlot.z);
+  temple.scene.add(templeRosalys);
 }, undefined, (err) => {
   console.error('Rosalys failed to load:', err); // non-fatal
 });
@@ -979,6 +1000,7 @@ function showArrival(name) {
 let downAt = null;
 let lastEmptyTap = { t: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (appState === 'temple') return; // temple owns its own UI; no space picking
   if (diving) return;     // the surface dive is uninterruptible — only "Return to space" exits
   downAt = { x: e.clientX, y: e.clientY };
   resetting = false;      // user grabbed the view mid-reset
@@ -1034,6 +1056,12 @@ document.getElementById('close-panel').addEventListener('click', () => {
 
 document.getElementById('reset-view').addEventListener('click', resetView);
 
+// GO TO SPACE: leave the temple home screen and enter the solar system
+document.getElementById('enter-space').addEventListener('click', () => {
+  appState = 'space';
+  document.getElementById('enter-space').style.display = 'none';
+});
+
 // "Return to space" leaves the surface view and pulls back to the system overview
 document.getElementById('surface-return').addEventListener('click', exitSurfaceMode);
 
@@ -1063,6 +1091,19 @@ const ORIGIN = new THREE.Vector3();
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.1);
+
+  // temple home screen: render its own scene/camera and skip ALL space code below.
+  // (reuses dt above so clock.getDelta() isn't called twice per frame)
+  if (appState === 'temple') {
+    const t = clock.elapsedTime;
+    temple.update(dt, t);
+    renderer.render(temple.scene, temple.camera);
+    if (!templeButtonShown) {
+      document.getElementById('enter-space').style.display = 'block';
+      templeButtonShown = true;
+    }
+    return;
+  }
 
   for (const { pivot, speed } of orbitPivots) pivot.rotation.y += speed * dt;
   for (const { mesh, speed } of spinners) mesh.rotateY(speed * dt);
@@ -1292,4 +1333,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  temple.camera.aspect = window.innerWidth / window.innerHeight;
+  temple.camera.updateProjectionMatrix();
 });
