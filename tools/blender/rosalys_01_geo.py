@@ -203,15 +203,15 @@ for i, (x, y, z) in enumerate(spark_pts):
 
 # ============================================================ ARMS + HANDS + BRACELETS
 for s in (-1, 1):
-    sh = sphere(f"Shoulder{s}", 0.17, (0.40 * s, 0, 2.58))
+    sh = sphere(f"Shoulder{s}", 0.14, (0.40 * s, 0, 2.58))
     paint(sh, mat(*SKIN, rough=0.45))
-    arm = sphere(f"Arm{s}", 0.135, (0.50 * s, -0.05, 2.10), scale=(1.0, 1.0, 3.0))
-    arm.rotation_euler = (0, R(s * 10), 0)
+    # slender tapered limb: narrow at the wrist (r1) widening to the shoulder (r2)
+    arm = cone(f"Arm{s}", 0.07, 0.11, 0.85, (0.50 * s, -0.05, 2.10), rot=(0, R(s * 10), 0))
     paint(arm, mat(*SKIN, rough=0.45))
-    hand = sphere(f"Hand{s}", 0.13, (0.55 * s, -0.18, 1.62))
+    hand = sphere(f"Hand{s}", 0.09, (0.55 * s, -0.18, 1.62))
     paint(hand, mat(*SKIN, rough=0.45))
     # glowing pink-violet energy bracelet at each wrist
-    bracelet = torus(f"Bracelet{s}", 0.17, 0.045, (0.55 * s, -0.12, 1.78), rot=(R(90), 0, 0))
+    bracelet = torus(f"Bracelet{s}", 0.11, 0.045, (0.55 * s, -0.12, 1.78), rot=(R(90), 0, 0))
     paint(bracelet, mat("Bracelet", BRA, rough=0.2, emit=BRA, estr=5.0))
 
 # ============================================================ ROSE-WAND (held in right hand)
