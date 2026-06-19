@@ -7,6 +7,40 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PLANET_DATA, ORBITS } from './planetData.js';
 import './style.css';
 
+// ---------- avatar registry (data-driven foundation; not yet consumed) ----------
+// Single source of truth for the avatar roster. STEP 0 only declares it — the
+// existing Terra/Rosalys load + animation code is unchanged and does not read
+// from this yet. Future steps will drive loading/animation/store from here.
+const AVATAR_REGISTRY = [
+  {
+    id: 'terra',
+    name: 'Terra',
+    gltfPath: '/mascot.gltf',
+    auraColor: '#00cfff',
+    waveColor: '#00cfff',
+    speed: 1.0,
+    price: 0,
+    unlocked: true,
+    rarity: 'common',
+    capabilities: { canFly: true, hasWings: false, hasFlames: true },
+  },
+  {
+    id: 'rosalys',
+    name: 'Rosalys',
+    gltfPath: '/rosalys.gltf',
+    auraColor: '#ff5cc8',
+    waveColor: '#c05cff',
+    speed: 10.0,
+    price: 4.99,
+    unlocked: true,
+    rarity: 'rare',
+    capabilities: { canFly: false, hasWings: true, hasFlames: false },
+  },
+];
+
+let activeAvatarId = 'terra';     // which avatar is currently controlled (reserved)
+let appState = 'space';           // 'temple' | 'space' (stays 'space' until the temple exists)
+
 // ---------- device profile ----------
 const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
 const isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 700;
