@@ -1136,6 +1136,7 @@ document.getElementById('enter-space').addEventListener('click', () => {
   document.getElementById('avatar-selection').style.display = 'none';
   document.getElementById('hint').style.display = 'block';
   document.getElementById('back-to-temple').style.display = 'block';
+  document.getElementById('zoom-bar').style.display = 'flex';
 });
 
 // back to the Temple of Stars home screen from space
@@ -1143,6 +1144,7 @@ document.getElementById('back-to-temple').addEventListener('click', () => {
   appState = 'temple';
   document.getElementById('back-to-temple').style.display = 'none';
   document.getElementById('hint').style.display = 'none';
+  document.getElementById('zoom-bar').style.display = 'none';
 
   // Reset avatar state when returning to temple
   activeAvatarId = null;
@@ -1201,6 +1203,83 @@ panel.addEventListener('touchend', (e) => {
     followTarget = null;
     // swipe-down only dismisses the panel; Terra keeps orbiting
   }
+}, { passive: true });
+
+// ---- zoom bar ----
+const zoomThumb = document.getElementById('zoom-thumb');
+const zoomTrack = document.getElementById('zoom-track');
+
+function getZoomFraction() {
+  // 0 = max zoom in (close), 1 = max zoom out (far)
+  const min = controls.minDistance;
+  const max = controls.maxDistance;
+  const cur = camera.position.distanceTo(controls.target);
+  return Math.max(0, Math.min(1, (cur - min) / (max - min)));
+}
+
+function updateZoomThumb() {
+  const f = getZoomFraction();
+  const trackH = zoomTrack.offsetHeight;
+  const thumbH = zoomThumb.offsetHeight;
+  zoomThumb.style.top = (f * (trackH - thumbH)) + 'px';
+}
+
+function applyZoom(fraction) {
+  const min = controls.minDistance;
+  const max = controls.maxDistance;
+  const dist = min + fraction * (max - min);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target.clone().add(dir.multiplyScalar(dist)));
+  controls.update();
+  updateZoomThumb();
+}
+
+// + button
+document.getElementById('zoom-in').addEventListener('click', () => {
+  applyZoom(Math.max(0, getZoomFraction() - 0.08));
+});
+
+// - button
+document.getElementById('zoom-out').addEventListener('click', () => {
+  applyZoom(Math.min(1, getZoomFraction() + 0.08));
+});
+
+// drag thumb
+let zoomDragging = false;
+let zoomDragStartY = 0;
+let zoomDragStartF = 0;
+
+zoomThumb.addEventListener('pointerdown', (e) => {
+  zoomDragging = true;
+  zoomDragStartY = e.clientY;
+  zoomDragStartF = getZoomFraction();
+  zoomThumb.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+});
+
+zoomThumb.addEventListener('pointermove', (e) => {
+  if (!zoomDragging) return;
+  const trackH = zoomTrack.offsetHeight;
+  const delta = (e.clientY - zoomDragStartY) / trackH;
+  applyZoom(Math.max(0, Math.min(1, zoomDragStartF + delta)));
+  e.stopPropagation();
+});
+
+zoomThumb.addEventListener('pointerup', () => {
+  zoomDragging = false;
+});
+
+// click on track to jump
+zoomTrack.addEventListener('click', (e) => {
+  if (e.target === zoomThumb) return;
+  const rect = zoomTrack.getBoundingClientRect();
+  const f = (e.clientY - rect.top) / rect.height;
+  applyZoom(Math.max(0, Math.min(1, f)));
+});
+
+// keep thumb in sync when user scrolls/pinches
+renderer.domElement.addEventListener('wheel', () => {
+  requestAnimationFrame(updateZoomThumb);
 }, { passive: true });
 
 // ---------- animation ----------
@@ -1452,6 +1531,7 @@ function animate() {
   }
 
   controls.update();
+  updateZoomThumb(); // keep the zoom slider in sync with the live camera distance
   composer.render();
 }
 animate();
