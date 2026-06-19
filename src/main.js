@@ -1236,20 +1236,29 @@ function animate() {
     mascotLight.position.add(_lightDir);
 
     if (mascotFlying) {
-      // Superman style: aim where we're going, then pitch flat (head leading).
       _flyDir.subVectors(dest, av.position);
-      if (_flyDir.x * _flyDir.x + _flyDir.z * _flyDir.z > 1e-4) {
-        av.rotation.y = Math.atan2(_flyDir.x, _flyDir.z); // face the destination
-      }
-      av.rotation.z = 0;
-      // pitch toward horizontal over the first 0.3s, hold, then straighten in the
-      // last 0.3s (p > 0.85) for an upright landing
-      if (p > 0.85) {
-        av.rotation.x = THREE.MathUtils.lerp(-1.4, 0, (p - 0.85) / 0.15);
-      } else if (fe < 0.3) {
-        av.rotation.x = THREE.MathUtils.lerp(0, -1.4, fe / 0.3);
+      if (activeAvatarId === 'rosalys') {
+        // Fairy levitation: stay fully upright, just turn to face where she's going
+        av.rotation.x = 0;
+        av.rotation.z = 0;
+        if (_flyDir.x * _flyDir.x + _flyDir.z * _flyDir.z > 1e-4) {
+          av.rotation.y = Math.atan2(_flyDir.x, _flyDir.z);
+        }
       } else {
-        av.rotation.x = -1.4; // cruising flat
+        // Terra — Superman style: aim where we're going, then pitch flat (head leading).
+        if (_flyDir.x * _flyDir.x + _flyDir.z * _flyDir.z > 1e-4) {
+          av.rotation.y = Math.atan2(_flyDir.x, _flyDir.z); // face the destination
+        }
+        av.rotation.z = 0;
+        // pitch toward horizontal over the first 0.3s, hold, then straighten in the
+        // last 0.3s (p > 0.85) for an upright landing
+        if (p > 0.85) {
+          av.rotation.x = THREE.MathUtils.lerp(-1.4, 0, (p - 0.85) / 0.15);
+        } else if (fe < 0.3) {
+          av.rotation.x = THREE.MathUtils.lerp(0, -1.4, fe / 0.3);
+        } else {
+          av.rotation.x = -1.4; // cruising flat
+        }
       }
     } else {
       // not flying: face the camera on the Y axis only, fully upright
