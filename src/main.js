@@ -914,7 +914,10 @@ function mascotDestination(t) {
     // Rosalys's pivot sits higher relative to her body than Terra's, so her home Y is
     // lowered by this delta — apply the same compensation here so she orbits beside the
     // planet (level with Terra) instead of floating above it. Terra's delta is 0.
-    const yOffset = activeAvatarId === 'rosalys' ? -18.0 : 0; // TEST VALUE — diagnostic, tune after visual check
+    // Rosalys's pivot is at the bottom of her body (Terra's is centred), so at a planet
+    // her pivot lands at planetY and her body floats above it. Drop her by a fraction of
+    // her normalised visual height so she orbits beside the planet, level with Terra.
+    const yOffset = activeAvatarId === 'rosalys' ? -(MASCOT_HEIGHT * 0.6) : 0;
     // X/Z trace the circle; Y wobbles at a *different* frequency (a * 0.5) to tilt
     // the orbit into a 3D figure-8 ellipse, plus an energetic 1.2-amplitude bob
     _mascotDest.set(
