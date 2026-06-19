@@ -172,6 +172,25 @@ let templeButtonShown = false; // reveal the GO TO SPACE button once, on first t
 // boot starts in the temple, so the space "drag/scroll/click" hint must start hidden
 document.getElementById('hint').style.display = 'none';
 
+// Single source of truth for which avatar is shown in space. pivot.visible hides
+// the model, but each avatar's floating name label is added to the scene (NOT as a
+// pivot child), so the label must be toggled via the labels[] registry as well.
+function applyAvatarVisibility() {
+  const terraActive = activeAvatarId === 'terra';
+  if (mascot) {
+    mascot.visible = terraActive;
+    mascot.traverse((c) => { if (c.isSprite) c.visible = terraActive; });
+  }
+  if (rosalys) {
+    rosalys.visible = !terraActive;
+    rosalys.traverse((c) => { if (c.isSprite) c.visible = !terraActive; });
+  }
+  for (const l of labels) {
+    if (l.body === mascot) l.sprite.visible = terraActive;
+    else if (l.body === rosalys) l.sprite.visible = !terraActive;
+  }
+}
+
 // ---------- circular sun halo ----------
 // Additive blending adds the texture's RGB to the screen, so the gradient must
 // fade to pure BLACK at the edge: black adds nothing, making the visible halo
@@ -577,7 +596,6 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   pivot.position.set(0, MASCOT_Y, 0);
   scene.add(pivot);
   mascot = pivot;
-  mascot.visible = (activeAvatarId === 'terra'); // only the active avatar shows in space
 
   // pulsing energy halo + flight ripple waves, just above Terra's head. Cyan, via
   // the shared makeAura helper (same colour/values as before); animated in the loop.
@@ -598,6 +616,7 @@ new GLTFLoader().load('/mascot.gltf', (gltf) => {
   templeMascot.rotation.set(0, 0, 0);
   templeMascot.position.set(tSlot.x, 1, tSlot.z);
   temple.scene.add(templeMascot);
+  applyAvatarVisibility(); // set space visibility AFTER cloning so the temple clone stays visible
 }, undefined, (err) => {
   console.error('Mascot failed to load:', err); // non-fatal: the system still renders
 });
@@ -670,7 +689,6 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   pivot.position.copy(ROSALYS_HOME);
   scene.add(pivot);
   rosalys = pivot;
-  rosalys.visible = (activeAvatarId === 'rosalys'); // only the active avatar shows in space
 
   // rose-pink / violet aura via the same shared helper Terra uses (different colours)
   const aura = makeAura(pivot, MASCOT_HEIGHT / 2 + 0.5, 0xff5cc8, 0xc05cff);
@@ -686,6 +704,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   templeRosalys.rotation.set(0, 0, 0);
   templeRosalys.position.set(rSlot.x, 1, rSlot.z);
   temple.scene.add(templeRosalys);
+  applyAvatarVisibility(); // set space visibility AFTER cloning so the temple clone stays visible
 }, undefined, (err) => {
   console.error('Rosalys failed to load:', err); // non-fatal
 });
@@ -1069,14 +1088,7 @@ document.getElementById('reset-view').addEventListener('click', resetView);
 // GO TO SPACE: leave the temple home screen and enter the solar system
 document.getElementById('enter-space').addEventListener('click', () => {
   appState = 'space';
-  // Show only the active avatar in space
-  if (activeAvatarId === 'terra') {
-    if (mascot) mascot.visible = true;
-    if (rosalys) rosalys.visible = false;
-  } else {
-    if (mascot) mascot.visible = false;
-    if (rosalys) rosalys.visible = true;
-  }
+  applyAvatarVisibility(); // show only the active avatar (and its label) in space
   document.getElementById('enter-space').style.display = 'none';
   document.getElementById('hint').style.display = 'block';
   document.getElementById('back-to-temple').style.display = 'block';
