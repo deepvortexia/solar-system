@@ -39,7 +39,7 @@ const AVATAR_REGISTRY = [
   },
 ];
 
-let activeAvatarId = 'terra';     // which avatar is currently controlled (reserved)
+let activeAvatarId = null;        // null = no avatar selected yet (chosen in the temple)
 let appState = 'temple';          // 'temple' | 'space' — boots into the Temple of Stars
 
 // ---------- device profile ----------
@@ -177,17 +177,18 @@ document.getElementById('hint').style.display = 'none';
 // pivot child), so the label must be toggled via the labels[] registry as well.
 function applyAvatarVisibility() {
   const terraActive = activeAvatarId === 'terra';
+  const rosalysActive = activeAvatarId === 'rosalys';
   if (mascot) {
     mascot.visible = terraActive;
     mascot.traverse((c) => { if (c.isSprite) c.visible = terraActive; });
   }
   if (rosalys) {
-    rosalys.visible = !terraActive;
-    rosalys.traverse((c) => { if (c.isSprite) c.visible = !terraActive; });
+    rosalys.visible = rosalysActive;
+    rosalys.traverse((c) => { if (c.isSprite) c.visible = rosalysActive; });
   }
   for (const l of labels) {
     if (l.body === mascot) l.sprite.visible = terraActive;
-    else if (l.body === rosalys) l.sprite.visible = !terraActive;
+    else if (l.body === rosalys) l.sprite.visible = rosalysActive;
   }
 }
 
@@ -1138,10 +1139,7 @@ function animate() {
     const t = clock.elapsedTime;
     temple.update(dt, t);
     renderer.render(temple.scene, temple.camera);
-    if (!templeButtonShown) {
-      document.getElementById('enter-space').style.display = 'block';
-      templeButtonShown = true;
-    }
+    // GO TO SPACE stays hidden until an avatar is chosen in the temple.
     return;
   }
 
