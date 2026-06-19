@@ -491,67 +491,70 @@ body.surface-mode #info-panel {
   display: none;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   z-index: 40;
   user-select: none;
 }
 
 #zoom-in, #zoom-out {
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  border: 1.5px solid rgba(180, 120, 255, 0.6);
-  background: rgba(20, 5, 50, 0.75);
-  color: #cc88ff;
-  font-size: 1.3rem;
+  border: 2px solid rgba(200, 140, 255, 0.8);
+  background: rgba(40, 10, 80, 0.85);
+  color: #dd99ff;
+  font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: background 0.15s, border-color 0.15s;
+  backdrop-filter: blur(10px);
+  transition: background 0.15s, border-color 0.15s,
+    box-shadow 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 0 12px #8844cc66;
 }
 
 #zoom-in:hover, #zoom-out:hover {
-  background: rgba(68, 17, 170, 0.85);
-  border-color: #cc88ff;
+  background: rgba(88, 30, 180, 0.95);
+  border-color: #ee88ff;
+  box-shadow: 0 0 24px #aa55ffaa;
 }
 
 #zoom-track {
-  width: 4px;
-  height: 180px;
-  background: rgba(180, 120, 255, 0.2);
-  border-radius: 4px;
+  width: 6px;
+  height: 260px;
+  background: rgba(180, 100, 255, 0.25);
+  border-radius: 6px;
   position: relative;
   cursor: pointer;
+  box-shadow: 0 0 10px #6622aa44;
 }
 
 #zoom-thumb {
-  width: 14px;
-  height: 14px;
-  background: #aa55ff;
-  border: 2px solid #cc88ff;
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #aa55ff, #dd88ff);
+  border: 2.5px solid #ee99ff;
   border-radius: 50%;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   top: 50%;
   cursor: grab;
-  box-shadow: 0 0 10px #8844cc88;
-  transition: box-shadow 0.15s;
+  box-shadow: 0 0 16px #aa55ffcc, 0 0 4px #fff4;
+  transition: box-shadow 0.15s, transform 0.1s;
 }
 
 #zoom-thumb:active {
   cursor: grabbing;
-  box-shadow: 0 0 20px #aa55ffaa;
+  box-shadow: 0 0 28px #cc77ffdd;
+  transform: translateX(-50%) scale(1.2);
 }
 
 @media (max-width: 768px) {
-  #zoom-bar {
-    left: 10px;
-  }
-  #zoom-track {
-    height: 120px;
-  }
+  #zoom-bar { left: 10px; }
+  #zoom-in, #zoom-out { width: 38px; height: 38px; }
+  #zoom-track { height: 160px; width: 5px; }
+  #zoom-thumb { width: 16px; height: 16px; }
 }
