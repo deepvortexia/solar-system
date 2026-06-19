@@ -154,8 +154,8 @@ smile = bpy.context.active_object
 paint(smile, mat("Mouth", "#C8607E", rough=0.4))
 
 # ============================================================ HAIR (high-bun style)
-# small cap as a base on the crown, a prominent chignon on top, gold cross-pins,
-# face-framing bangs, and a few wispy loose back strands.
+# golden base cap, a prominent chignon on top with gold cross-pins, and a few
+# wispy loose back strands. No bangs — the face stays fully visible.
 cap = sphere("HairCap", 0.62, (0, 0.10, 3.52), scale=(1.02, 1.05, 0.95))
 paint(cap, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
 # the chignon: a neat bun sitting on top of the head cap (not floating above it)
@@ -165,10 +165,6 @@ paint(bun, mat(*HAIR, rough=0.35, emit=HAIR[1], estr=0.6))
 for k, ang in enumerate((20, -20)):
     pin = cone(f"HairPin{k}", 0.022, 0.022, 0.9, (0, -0.22, 3.72), rot=(0, R(90 + ang), 0))
     paint(pin, mat("HairPin", "#FFD700", rough=0.3, emit="#FFD700", estr=0.5))
-# bangs: a couple of short tapered fringe shapes over the forehead
-for s in (-1, 1):
-    bang = cone(f"Bang{s}", 0.22, 0.04, 0.55, (0.26 * s, -0.45, 3.62), rot=(R(s * 8), 0, 0))
-    paint(bang, mat(*HAIR, rough=0.35))
 # wispy loose back strands (the bun is now the main hair feature, so these are short)
 lock_specs = [
     (-0.18, 0.30, 2.55, R(172), R(-10), 2.0),   # left side strand

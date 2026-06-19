@@ -609,7 +609,7 @@ new GLTFLoader().load('/rosalys.gltf', (gltf) => {
   rosalysHalo = aura.halo;
   rosalysWaves.push(...aura.waves);
 
-  addLabel(rosalys, 'Rosalys', MASCOT_HEIGHT / 2 + 1.3, 1.3);
+  addLabel(rosalys, 'Rosalys', MASCOT_HEIGHT / 2 + 4.3, 1.3); // raised clear above her halo
 }, undefined, (err) => {
   console.error('Rosalys failed to load:', err); // non-fatal
 });
